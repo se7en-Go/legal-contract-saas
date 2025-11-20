@@ -1,0 +1,25 @@
+﻿name: Invoke Task Runner
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  invoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call task-runner
+        env:
+          FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/task-runner
+          AUTH_TOKEN: ${{ secrets.TASK_RUNNER_TOKEN }}
+        run: |
+          STATUS=$(curl -s -o response.json -w "%{http_code}" "$FUNCTION_URL" \
+            -H "Authorization: Bearer $AUTH_TOKEN" \
+            -H "Content-Type: application/json")
+          echo "Status: $STATUS"
+          cat response.json
+          if [ "$STATUS" -ge 400 ]; then
+            echo "Function returned error" >&2
+            exit 1
+          fi
