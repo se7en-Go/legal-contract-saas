@@ -15,6 +15,16 @@ type Clause = {
 
 const supabase = getServiceClient();
 
+function assertAuthorized(req: Request) {
+  const authHeader = req.headers.get("authorization") ?? "";
+  const envToken = Deno.env.get("TASK_RUNNER_SERVICE_TOKEN");
+  if (!envToken) throw new Error("TASK_RUNNER_SERVICE_TOKEN missing");
+  const token = authHeader.replace("Bearer", "").trim();
+  if (!token || token !== envToken) {
+    throw new Error("Unauthorized");
+  }
+}
+
 async function fetchQueuedTask() {
   const { data, error } = await supabase
     .from("tasks")
@@ -25,7 +35,7 @@ async function fetchQueuedTask() {
     .maybeSingle();
 
   if (error) throw new Error(`Failed to load task: ${error.message}`);
-  return (data as TaskRecord) ?? null;
+  return data as TaskRecord | null;
 }
 
 async function markTask(id: string, fields: Record<string, unknown>) {
@@ -56,7 +66,7 @@ async function fetchContract(contractId: string) {
 }
 
 async function parseContractClauses(contractTitle: string, contractPath: string) {
-  const prompt = `你是一位法律合同整理专家，请根据以下信息，将合同拆解为条款列表，包含条款编号、标题、正文。\n如果合同正文在 object storage 路径 ${contractPath}，请结合合同标题 ${contractTitle} 进行解析。\n输出 JSON，格式 { "clauses": [{"number": "1", "title": "", "text": ""}, ...] }。`;
+  const prompt = `你是一位法律合同整理专家，请根据以下信息，将合同拆解为条款列表，包含条款编号、标题、正文。\n如果合同正文在 object storage 路径 ${contractPath}，请结合合同标题 ${contractTitle} 进行解析。\n输出 JSON，格式 { \"clauses\": [{\"number\": \"1\", \"title\": \"\", \"text\": \"\"}, ...] }。`;
 
   const response = await callLlm({
     response_format: { type: "json_object" },
@@ -109,8 +119,10 @@ async function runRiskAnalysis(tenantId: string, contractVersionId: string) {
   return await response.json();
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
   try {
+    assertAuthorized(req);
+
     const task = await fetchQueuedTask();
     if (!task) {
       return new Response(JSON.stringify({ message: "no-task" }), { status: 200 });
