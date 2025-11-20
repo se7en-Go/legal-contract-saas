@@ -12,7 +12,10 @@ export async function signIn(formData: FormData) {
   const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${origin}/auth/callback` },
+    options: {
+      emailRedirectTo: `${origin}/auth/callback`,
+      flowType: 'pkce',
+    },
   });
   if (error) {
     throw new Error(error.message);

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Plus_Jakarta_Sans, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import { NavUser } from '@/components/nav-user';
+import { AuthHashHandler } from '@/components/auth-hash-handler';
 
 const sans = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-sans' });
 const serif = Playfair_Display({ subsets: ['latin'], weight: ['600'], variable: '--font-serif' });
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </header>
           <main className="mx-auto max-w-6xl px-6 py-12">{children}</main>
+          <AuthHashHandler />
         </div>
       </body>
     </html>
