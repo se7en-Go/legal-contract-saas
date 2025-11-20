@@ -5,6 +5,7 @@ type TaskRecord = {
   tenant_id: string;
   task_type: string;
   payload: Record<string, unknown>;
+  retry_count?: number;
 };
 
 type Clause = {
@@ -14,6 +15,7 @@ type Clause = {
 };
 
 const supabase = getServiceClient();
+const MAX_ATTEMPTS = Number(Deno.env.get("TASK_MAX_ATTEMPTS") ?? 3);
 const CONTRACTS_BUCKET = Deno.env.get("CONTRACTS_BUCKET") ?? "contracts";
 
 function assertAuthorized(req: Request) {
@@ -39,7 +41,7 @@ function bytesToBase64(bytes: Uint8Array) {
 async function fetchQueuedTask() {
   const { data, error } = await supabase
     .from("tasks")
-    .select("id, tenant_id, task_type, payload")
+    .select("id, tenant_id, task_type, payload, retry_count")
     .eq("task_type", "ingestion")
     .eq("status", "queued")
     .limit(1)
@@ -52,6 +54,27 @@ async function fetchQueuedTask() {
 async function markTask(id: string, fields: Record<string, unknown>) {
   const { error } = await supabase.from("tasks").update(fields).eq("id", id);
   if (error) throw new Error(`Failed to update task: ${error.message}`);
+}
+
+async function recordTaskAttempt(taskId: string, attemptNo: number, status: string, message?: string) {
+  const { error } = await supabase.from("task_attempts").insert({
+    task_id: taskId,
+    attempt_no: attemptNo,
+    status,
+    message: message ?? null,
+  });
+  if (error) throw new Error(`Failed to record attempt: ${error.message}`);
+}
+
+async function createNotification(tenantId: string, entity: string, message: string, severity: string, metadata: Record<string, unknown>) {
+  const { error } = await supabase.from("notifications").insert({
+    tenant_id: tenantId,
+    entity,
+    message,
+    severity,
+    metadata,
+  });
+  if (error) console.error("Failed to create notification", error);
 }
 
 async function fetchContractVersion(contractVersionId: string) {
@@ -179,7 +202,25 @@ async function runRiskAnalysis(tenantId: string, contractVersionId: string) {
   return await response.json();
 }
 
+async function triggerKeyClauseExtraction(tenantId: string, contractVersionId: string) {
+  const baseUrl = Deno.env.get("PROJECT_SUPABASE_URL");
+  const token = Deno.env.get("KEY_CLAUSE_EXTRACTOR_TOKEN");
+  if (!baseUrl || !token) {
+    console.warn("Key clause extractor not configured");
+    return;
+  }
+  await fetch(`${baseUrl}/functions/v1/key-clause-extractor`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ tenant_id: tenantId, contract_version_id: contractVersionId }),
+  }).catch((error) => console.error("key-clause-extractor failed", error));
+}
+
 Deno.serve(async (req) => {
+  let currentTask: TaskRecord | null = null;
   try {
     assertAuthorized(req);
 
@@ -187,6 +228,7 @@ Deno.serve(async (req) => {
     if (!task) {
       return new Response(JSON.stringify({ message: "no-task" }), { status: 200 });
     }
+    currentTask = task;
 
     await markTask(task.id, { status: "processing", updated_at: new Date().toISOString() });
 
@@ -204,7 +246,10 @@ Deno.serve(async (req) => {
     const clauses = await parseContractClauses(contract.title, rawText);
     await insertClauses(contractVersionId, clauses);
     await runRiskAnalysis(task.tenant_id, contractVersionId);
-    await markTask(task.id, { status: "completed", updated_at: new Date().toISOString() });
+    await triggerKeyClauseExtraction(task.tenant_id, contractVersionId);
+    await markTask(task.id, { status: "completed", updated_at: new Date().toISOString(), retry_count: task.retry_count ?? 0, last_error: null });
+    await recordTaskAttempt(task.id, (task.retry_count ?? 0) + 1, "completed");
+    await createNotification(task.tenant_id, `task:${task.id}`, `任务 ${task.task_type} 已完成`, "success", { clauses_created: clauses.length });
 
     return new Response(JSON.stringify({ task_id: task.id, clauses_created: clauses.length }), {
       status: 200,
@@ -212,6 +257,32 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error(error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), { status: 500 });
+    const message = (error as Error).message;
+    try {
+      if (currentTask) {
+        const nextRetry = (currentTask.retry_count ?? 0) + 1;
+        await recordTaskAttempt(currentTask.id, nextRetry, "failed", message);
+        const shouldRetry = nextRetry < MAX_ATTEMPTS;
+        await markTask(currentTask.id, {
+          status: shouldRetry ? "queued" : "failed",
+          retry_count: nextRetry,
+          last_error: message,
+          updated_at: new Date().toISOString(),
+        });
+        if (!shouldRetry) {
+          await supabase.from("approvals").insert({
+            tenant_id: currentTask.tenant_id,
+            entity_type: "task",
+            entity_id: currentTask.id,
+            status: "pending",
+            note: message,
+          });
+          await createNotification(currentTask.tenant_id, `task:${currentTask.id}`, `任务 ${currentTask.task_type} 多次失败`, "error", { last_error: message });
+        }
+      }
+    } catch (inner) {
+      console.error("Failed to record retry info", inner);
+    }
+    return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 });

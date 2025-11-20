@@ -2,42 +2,32 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { ForbiddenError, UnauthorizedError, requireTenantSession } from '@/lib/auth';
 
-type ContractRow = {
-  id: string;
-  title: string;
-  status: string;
-  counterparty: string | null;
-  created_at: string;
-  risk_findings: { count: number }[];
-};
-
 export async function GET(req: NextRequest) {
-  const tenantParam = req.nextUrl.searchParams.get('tenantId');
+  const status = req.nextUrl.searchParams.get('status') ?? undefined;
   let tenantId: string;
-
   try {
-    const session = await requireTenantSession(tenantParam);
+    const session = await requireTenantSession();
     tenantId = session.tenantId;
   } catch (error) {
     return handleAuthError(error);
   }
 
-  const { data, error } = await supabaseAdmin
-    .from<ContractRow>('contracts')
-    .select('id, title, status, counterparty, created_at, risk_findings(count)')
+  const query = supabaseAdmin
+    .from('tasks')
+    .select('id, task_type, status, progress, error, payload, created_at, updated_at')
     .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(200);
 
+  if (status && status !== 'all') {
+    query.eq('status', status);
+  }
+
+  const { data, error } = await query;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  const mapped = (data ?? []).map((row) => ({
-    ...row,
-    risk_count: row.risk_findings?.[0]?.count ?? 0,
-  }));
-
-  return NextResponse.json({ contracts: mapped });
+  return NextResponse.json({ tasks: data ?? [] });
 }
 
 function handleAuthError(error: unknown) {

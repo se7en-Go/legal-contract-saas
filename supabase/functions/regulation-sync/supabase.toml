@@ -1,0 +1,2 @@
+[functions.regulation-sync]
+verify_jwt = false

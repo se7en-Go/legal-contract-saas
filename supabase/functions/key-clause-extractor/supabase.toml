@@ -1,0 +1,2 @@
+[functions.key-clause-extractor]
+verify_jwt = false

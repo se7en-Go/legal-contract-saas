@@ -1,23 +1,23 @@
-﻿import Link from 'next/link';
+import Link from 'next/link';
 
 const stats = [
-  { label: '已解析合同', value: '1,248', sub: '过去30天' },
-  { label: '高风险警示', value: '86', sub: '待处理' },
-  { label: '法规更新', value: '12', sub: '本周新增' },
+  { label: '累计处理合同', value: '1,248', sub: '近 30 天' },
+  { label: '高风险提醒', value: '86', sub: '本周新增' },
+  { label: '自动化任务', value: '12', sub: '实时运行中' },
 ];
 
 const pillars = [
   {
-    title: '法律级治理',
-    desc: '以条例库、审计日志和操作痕迹保障合规，满足律所与企业法务要求。',
+    title: '法律自动化',
+    desc: '以法律顾问流程为蓝本，自动化识别条款、对照法规、生成协作注释，减少反复人工复核。',
   },
   {
-    title: 'AI 深度审阅',
-    desc: 'DeepSeek OCR + 风险识别代理，结合规则引擎给出条款级评估。',
+    title: 'Agent 协同',
+    desc: 'DeepSeek OCR、Docling 拆条 + LLM 风险分析 + pgvector 召回，形成可追踪的多智能体流水线。',
   },
   {
-    title: 'SaaS 协同',
-    desc: '多租户、任务流、通知与审批串联，让团队协作透明可追溯。',
+    title: 'SaaS 管理',
+    desc: '多租户隔离、实时通知、版本比对、审计日志，帮助风控团队与业务团队统一协同。',
   },
 ];
 
@@ -26,13 +26,13 @@ export default function HomePage() {
     <div className="space-y-12">
       <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 px-8 py-12 shadow-2xl">
         <div className="max-w-3xl space-y-6 text-white">
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">LEXIGUARD / LEGAL AI</p>
+          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">STILL / LEGAL AI</p>
           <h1 className="text-4xl font-semibold leading-tight">
-            让合同审查进入 AI 时代，
-            <span className="text-cyan-300"> 即刻洞察风险</span>
+            让合同审查进入 AI 协作时代
+            <span className="text-cyan-300"> · 快速锁定风险与机会</span>
           </h1>
           <p className="text-slate-200">
-            上传合同、自动解析条款、定位风险并给出法规依据——整个工作流由 Supabase Edge Functions 与多 Agent 驱动。
+            从上传合同、自动拆条、法规引用、风险分析、条款改写到洞察汇报的一站式流程，由 Supabase Edge Functions 和多智能体协同完成。
           </p>
           <div className="flex flex-wrap gap-4">
             <Link href="/upload" className="rounded-2xl bg-cyan-400 px-5 py-2 text-slate-900 shadow-lg shadow-cyan-400/40">

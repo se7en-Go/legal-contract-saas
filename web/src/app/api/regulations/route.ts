@@ -2,42 +2,34 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { ForbiddenError, UnauthorizedError, requireTenantSession } from '@/lib/auth';
 
-type ContractRow = {
-  id: string;
-  title: string;
-  status: string;
-  counterparty: string | null;
-  created_at: string;
-  risk_findings: { count: number }[];
-};
-
 export async function GET(req: NextRequest) {
-  const tenantParam = req.nextUrl.searchParams.get('tenantId');
-  let tenantId: string;
+  const search = req.nextUrl.searchParams.get('q')?.trim();
+  const jurisdiction = req.nextUrl.searchParams.get('jurisdiction')?.trim();
 
   try {
-    const session = await requireTenantSession(tenantParam);
-    tenantId = session.tenantId;
+    await requireTenantSession(); // 仅校验用户已登录
   } catch (error) {
     return handleAuthError(error);
   }
 
-  const { data, error } = await supabaseAdmin
-    .from<ContractRow>('contracts')
-    .select('id, title, status, counterparty, created_at, risk_findings(count)')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false });
+  const query = supabaseAdmin
+    .from('regulations')
+    .select('id,name,jurisdiction,effective_date,expiry_date,source_url, regulation_sections(id,section_no,text,tags)')
+    .order('effective_date', { ascending: false })
+    .limit(100);
 
+  if (search) {
+    query.or(`name.ilike.%${search}%,jurisdiction.ilike.%${search}%`);
+  }
+  if (jurisdiction) {
+    query.eq('jurisdiction', jurisdiction);
+  }
+
+  const { data, error } = await query;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-
-  const mapped = (data ?? []).map((row) => ({
-    ...row,
-    risk_count: row.risk_findings?.[0]?.count ?? 0,
-  }));
-
-  return NextResponse.json({ contracts: mapped });
+  return NextResponse.json({ regulations: data ?? [] });
 }
 
 function handleAuthError(error: unknown) {

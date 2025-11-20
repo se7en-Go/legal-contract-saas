@@ -1,20 +1,28 @@
-﻿'use client';
+'use client';
 
 import { useState } from 'react';
+import { useTenantSession } from '@/hooks/use-tenant-session';
+
+type TaskInfo = Record<string, unknown> | null;
 
 export default function UploadPage() {
-  const [tenantId, setTenantId] = useState('');
+  const { session, loading: sessionLoading, error: sessionError } = useTenantSession();
+  const tenantId = session?.tenant_id ?? '';
   const [title, setTitle] = useState('');
   const [counterparty, setCounterparty] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [taskInfo, setTaskInfo] = useState<any>(null);
+  const [taskInfo, setTaskInfo] = useState<TaskInfo>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!session) {
+      setStatus('未登录，无法提交合同。');
+      return;
+    }
     if (!tenantId || !title || !file) {
-      setStatus('请填写完整信息并选择文件');
+      setStatus('请填写基本信息并选择合同文件。');
       return;
     }
     setLoading(true);
@@ -41,10 +49,10 @@ export default function UploadPage() {
         }),
       });
       const ingestJson = await ingestRes.json();
-      if (!ingestRes.ok) throw new Error(ingestJson.error || 'ingest-doc 调用失败');
+      if (!ingestRes.ok) throw new Error(ingestJson.error || '触发 ingest-doc 失败');
 
       setTaskInfo(ingestJson);
-      setStatus('上传成功，AI 正在解析条款。稍后在「合同监控」查看结果。');
+      setStatus('上传成功，AI 正在解析条款并触发后续任务，请稍后在“任务状态”或“合同库”查看结果。');
       setTitle('');
       setCounterparty('');
       setFile(null);
@@ -61,41 +69,50 @@ export default function UploadPage() {
         <div className="mb-6 space-y-1">
           <p className="text-sm uppercase tracking-[0.4em] text-slate-400">Upload</p>
           <h2 className="text-2xl font-semibold text-slate-900">上传合同</h2>
-          <p className="text-sm text-slate-500">选择 PDF/Word，即可发起 OCR + 解析任务。</p>
+          <p className="text-sm text-slate-500">支持 PDF/Word，系统会自动调用 OCR + 结构化 Agent 进行解析。</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs uppercase tracking-wide text-slate-500">Tenant ID</label>
-            <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:border-blue-500 focus:outline-none" />
+            <input
+              value={tenantId}
+              readOnly
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600 focus:outline-none"
+              placeholder={sessionLoading ? '正在获取…' : '请先登录以获取租户 ID'}
+            />
+            <p className="mt-1 text-xs text-slate-500">{session ? `当前用户：${session.email}` : sessionError || '未登录'}</p>
           </div>
           <div>
             <label className="text-xs uppercase tracking-wide text-slate-500">合同标题</label>
             <input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
-            <label className="text-xs uppercase tracking-wide text-slate-500">对方 (可选)</label>
+            <label className="text-xs uppercase tracking-wide text-slate-500">对手方（可选）</label>
             <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
             <label className="text-xs uppercase tracking-wide text-slate-500">合同文件</label>
             <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="mt-1 w-full rounded-xl border border-dashed border-slate-300 px-3 py-2 text-sm" />
           </div>
-          <button type="submit" disabled={loading} className="w-full rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 text-white shadow-lg shadow-blue-600/40 disabled:opacity-60">
-            {loading ? '上传中…' : '上传并创建任务'}
+          <button
+            type="submit"
+            disabled={loading || !session || !tenantId}
+            className="w-full rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 text-white shadow-lg shadow-blue-600/40 disabled:opacity-60"
+          >
+            {loading ? '上传中…' : '上传并启动解析'}
           </button>
         </form>
         {status && <p className="mt-4 text-sm text-slate-700">{status}</p>}
+        {sessionError && <p className="mt-2 text-sm text-red-600">{sessionError}</p>}
       </div>
 
       <div className="rounded-3xl border border-white/10 bg-white/80 p-6 shadow-xl">
-        <h3 className="text-lg font-semibold text-slate-900">最新任务</h3>
-        <p className="text-sm text-slate-500">系统会自动记录 contract_id / version / task_id，便于排查。</p>
+        <h3 className="text-lg font-semibold text-slate-900">任务响应</h3>
+        <p className="text-sm text-slate-500">系统会返回 contract_id / version_id / task_id，方便前往任务中心跟踪。</p>
         {taskInfo ? (
-          <pre className="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
-            {JSON.stringify(taskInfo, null, 2)}
-          </pre>
+          <pre className="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">{JSON.stringify(taskInfo, null, 2)}</pre>
         ) : (
-          <p className="mt-4 text-sm text-slate-500">尚无任务，提交表单后将在此显示。</p>
+          <p className="mt-4 text-sm text-slate-500">提交后会在此展示 ingest-doc 返回的 JSON。</p>
         )}
       </div>
     </div>
