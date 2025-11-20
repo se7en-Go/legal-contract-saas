@@ -1,131 +1,114 @@
-﻿# 开发指南（Legal AI 合同审查 SaaS）
+# 开发指南（Still Legal AI 合同审查 SaaS）
 
 ## 1. 产品定位与目标
-- 面向律所与法务团队，自动识别合同风险条款、不合规内容，并给出基于最新法规的修改建议。
-- 支持合同版本比对、关键条款提取、归档及协同审阅。
-- 后端以 Supabase 为核心，调用自建 LLM（自定义 base URL/API Key/Model Id）。
+- 面向法务、风控、业务协同团队，提供合同上传、自动拆条、风险比对、法规引用、关键条款沉淀、审批流以及洞察报告。
+- 重点场景：批量合同审查、跨团队协同、风险复核、客户交付。
+- 强调多租户隔离、可插拔 LLM/OCR 服务，并支持可追踪的 Agent 工作流。
 
-## 2. 总体架构
+## 2. 系统架构
 ```
-Client (Next.js / Nuxt) ─? API SDK ─? Supabase Edge Functions
-                                   │
-                                   ├─? Supabase Postgres + Storage + Auth + Realtime
-                                   ├─? pgvector 检索（合同条款、法规向量）
-                                   ├─? Object Storage (PDF/Word/OCR)
-                                   ├─? 队列 (Supabase Scheduler + Upstash/QStash) 用于长耗时任务
-                                   └─? 自建 LLM Service (Base URL / API Key / Model ID)
+Next.js (App Router)
+   └─ API Routes（/api/*） → Supabase REST / Edge Functions
+Supabase
+   ├─ Postgres + pgvector
+   ├─ Storage (contracts bucket)
+   ├─ Auth / RLS
+   └─ Edge Functions（ingest-doc、task-runner、risk-analyzer、key-clause-extractor、
+                      regulation-sync、notification-dispatcher、insight-reporter）
+外部服务
+   ├─ OCR（DeepSeek / 自选 Provider）
+   └─ LLM（可对接 OpenAI、DeepSeek、Azure 等）
 ```
-- 所有调用通过 Supabase JWT 鉴权，Edge Functions 负责组合业务逻辑、任务编排。
-- 文档解析/OCR 可部署独立解析服务（Docling/Document AI）并通过 Webhook 与 Edge Functions 通信。
+- 所有前后端请求均使用 Supabase Auth JWT 鉴权，API Route 内部根据 `tenant_id` 限定数据范围。
+- Edge Functions 承担异步任务（OCR、解析、法规同步、通知派发、报告生成等）。
 
 ## 3. 技术栈
-- 前端：React + Next.js 14 (App Router, Server Actions) 或 Vue + Nuxt 3（SSR）。
-- 后端：Supabase (Postgres 15 + pgvector) + Edge Functions (TypeScript / Deno)。
-- LLM：自建推理服务，统一封装 SDK，支持同步/流式响应、重试、审计日志。
-- 文档处理：LangChain、Docling、pdfminer、Azure Form Recognizer（可选）。
-- 流程工具：Upstash/QStash、Supabase Scheduler、Supabase Realtime。
-- 监控：Supabase Logs、Logflare、Sentry/Highlight、Prometheus/Grafana (自建服务)。
+- 前端：React 19 + Next.js 16（App Router、Server Actions）、Tailwind CSS。
+- 后端/数据库：Supabase（Postgres 15 + pgvector + Storage）。
+- Edge Functions：Deno + TypeScript。
+- 工具：ESLint、GitHub Actions（可手动触发 Edge Functions）、Upstash/QStash（可选）。
 
-## 4. 模块划分
-1. **合同管理**：上传、OCR、结构化解析、版本管理。
-2. **风险识别引擎**：条款级风险检测、风险等级、整改建议。
-3. **法规对照**：法规库管理、法规更新任务、条款-法规引用。
-4. **关键条款提取**：自动提取付款、违约、保密等关键条款并归档。
-5. **版本比对**：语义 + 文本 diff，风险变化追踪。
-6. **协作与审计**：评论、指派、通知、操作日志。
-7. **系统管理**：租户、角色、权限、计划/计费（后续）。
+## 4. 核心模块
+1. **合同接入**：上传文件 → Storage → `ingest-doc` → 创建 `contracts`/`contract_versions` → `tasks`。
+2. **OCR + 拆条**：`task-runner` 下载原文 → OCR → LLM 抽条 → 写入 `clauses`。
+3. **风险识别**：`risk-analyzer` 基于条款调用 LLM，写入 `risk_findings`，同时触发通知。
+4. **法规管理**：`regulation-sync` 同步外部法规/章节；前端 `regulations` 页面浏览、搜索。
+5. **关键条款提取**：`key-clause-extractor` 聚合 LLM 输出写入 `key_clauses`。
+6. **任务队列与审批**：`tasks` 记录状态、重试、`task_attempts` 追踪；失败任务写入 `approvals`，并通过 `notifications` 推送到 webhook。
+7. **通知 / 审批流**：`notification-dispatcher` 读取 `notifications` 向租户 webhook 发送；前端 `/api/notifications` 可查询/标记；`/api/approvals` 支持审批操作。
+8. **洞察报告**：前端 `/reports` 调 `/api/reports/export`，由 `insight-reporter` 生成 Markdown/PDF（目前为 Markdown 预览）。
 
-## 5. 数据库设计（Supabase Postgres）
-- `tenants (id, name, plan, settings, created_at)`
-- `users (id, email, profile, created_at)`
-- `tenant_users (tenant_id, user_id, role, status)`
-- `contracts (id, tenant_id, title, counterparty, status, storage_path, checksum, metadata, created_by, created_at)`
-- `contract_versions (id, contract_id, version_no, source_path, parsed_json, summary, created_at)`
-- `clauses (id, contract_version_id, clause_no, title, body, clause_type, embedding, risk_score)`
-- `risk_findings (id, clause_id, risk_level, risk_type, description, recommendation, regulation_refs, llm_trace_id)`
-- `regulations (id, name, jurisdiction, effective_date, expiry_date, source_url)`
-- `regulation_sections (id, regulation_id, section_no, text, embedding, tags)`
-- `tasks (id, tenant_id, task_type, payload, status, progress, error, created_at)`
-- `notifications (id, tenant_id, entity, message, read_at)`
-- `audit_logs (id, tenant_id, actor_id, action, payload, created_at)`
-- `annotations/comments (id, contract_version_id, clause_id, content, created_by, created_at)`
-- 所有表启用 Row Level Security，policy 以 `tenant_id` 过滤。
+## 5. 数据模型（关键表）
+- `contracts`、`contract_versions`、`clauses`、`risk_findings`、`key_clauses`
+- `regulations`、`regulation_sections`
+- `tasks`、`task_attempts`、`approvals`
+- `notifications`（新增 `severity`、`metadata`、`delivered_at`）
+- 其他：`tenants`、`tenant_users`、`audit_logs`、`annotations`
+- 所有多租户表均启用 RLS，`tenant_id` 必须与 Auth JWT 中一致。
 
-## 6. 核心流程
-### 6.1 合同上传 & 解析
-1. 客户端上传文件 → Supabase Storage（使用签名 URL）。
-2. 触发 Edge Function：创建 `task` 记录，调用解析服务。
-3. 解析输出：原文、结构化 JSON、页面坐标、embedding → 写入 `contract_versions` / `clauses` 表。
-4. 将条款 embedding 写入 pgvector，用于后续检索。
+## 6. 主要流程
+### 6.1 上传 & 解析
+1. 前端 `/upload` 调 `/api/upload`（服务角色+Metadata），返回 Storage path。
+2. `/api/ingest` 调 `ingest-doc` Edge Function → 写 `contracts`、`contract_versions`、`tasks`。
+3. QStash/定时器触发 `task-runner` → OCR → LLM 拆条 → `clauses` → 调 `risk-analyzer`、`key-clause-extractor`。
 
-### 6.2 风险识别 & 法规对照
-1. 根据 `clauses` embeddings + 规则库检索上下文（Top-k）。
-2. 构建 prompt：系统角色=法律专家，输入条款文本 + 合同元数据 + 匹配法规摘要。
-3. 调用自建 LLM，得到 JSON：`[{clause_no, risk_level, finding, recommendation, regulation_refs}]`。
-4. Edge Function 校验 JSON schema，写入 `risk_findings`，同时记录 LLM trace。
-5. 对照最新法规：向量检索 + 版本检查，若法规已更新则触发重新审查任务。
+### 6.2 风险识别
+1. `risk-analyzer` 拉取 `clauses` → 调 LLM JSON 输出 → 写 `risk_findings`。
+2. 写成功后向 `notifications` 插入一条记录，`notification-dispatcher` 负责推送。
 
-### 6.3 修改建议与版本比对
-- LLM 生成修改后的条款文本，存入 `clause_rewrites` 表供审阅。
-- 使用 diff-match-patch 或 jsdiff 生成版本差异，附带风险变化指标。
+### 6.3 法规/关键条款
+1. `regulation-sync` 定期读取外部 feed（或 fallback 示例），Upsert `regulations`/`regulation_sections`。
+2. `key-clause-extractor` 接受任务后聚合 LLM 输出写入 `key_clauses`。
+3. 前端 `regulations`、`clauses` 页面通过 `/api/regulations`、`/api/key-clauses` 展示。
 
-### 6.4 关键条款提取
-- 在解析阶段增加一个 LLM 任务，输出关键条款列表（类别、责任主体、金额/日期等），写入 `key_clauses`。
-- 提供按类别、客户、合同类型的检索接口。
+### 6.4 通知 & 审批
+1. `notifications` 表记录所有系统事件，支持 severity、metadata。
+2. `notification-dispatcher` 调租户 `outgoing_webhooks`。
+3. 任务失败超过重试阈值写入 `approvals`，前端 `/api/approvals` 可查看/处理。
 
-## 7. LLM 集成设计
-- SDK 负责：鉴权、超时、重试、限流、流式（Server-Sent Events）。
-- Prompt 模板存储在 `prompts` 目录并版本化，包含：
-  - `risk_detection.prompt`
-  - `regulation_alignment.prompt`
-  - `clause_rewrite.prompt`
-  - `summary_generation.prompt`
-- 返回结果统一 JSON Schema（使用 zod/superstruct 校验）。
-- 记录 `llm_requests` 表：prompt, variables, settings, latency, response hash。
+### 6.5 洞察报告
+1. `/reports` 页面调用 `/api/reports/export`，聚合合同/风险/任务统计。
+2. Edge Function `insight-reporter` 生成 Markdown 报告，前端可预览。
 
-## 8. 安全与合规
-- 强制 HTTPS、JWT + RLS。
-- Storage 根据租户隔离路径 `/tenant_id/contracts/...`。
-- 合同与法规文本使用列级别加密（pgcrypto）或外部 KMS。
-- 所有导出操作需要审计日志记录。
-- 定期法律法规更新；提供管理员审批流程。
+## 7. 环境与配置
+- `.env.local`（前端）：
+  ```
+  NEXT_PUBLIC_SUPABASE_URL=
+  NEXT_PUBLIC_SUPABASE_ANON_KEY=
+  SUPABASE_SERVICE_ROLE_KEY=
+  CONTRACTS_BUCKET=contracts
+  NEXT_PUBLIC_SITE_URL=http://localhost:3000
+  INSIGHT_REPORTER_TOKEN=...
+  KEY_CLAUSE_EXTRACTOR_TOKEN=...
+  REGULATION_SYNC_TOKEN=...
+  NOTIFICATION_DISPATCH_TOKEN=...
+  ```
+- Supabase Edge Function Secrets（控制台设置）：
+  - `TASK_RUNNER_SERVICE_TOKEN`
+  - `KEY_CLAUSE_EXTRACTOR_TOKEN`
+  - `REGULATION_SYNC_TOKEN`
+  - `NOTIFICATION_DISPATCH_TOKEN`
+  - `INSIGHT_REPORTER_TOKEN`
+  - `TASK_MAX_ATTEMPTS`
+  - `PROJECT_SUPABASE_URL` / `PROJECT_SERVICE_ROLE_KEY`
+  - `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL_ID`
+  - `OCR_BASE_URL` / `OCR_API_KEY` / `OCR_MODEL_ID`
 
-## 9. 部署与环境
-- **环境**：dev / staging / prod（独立 Supabase 项目）。
-- **CI/CD**：GitHub Actions
-  - 前端测试与构建 → Vercel/Netlify。
-  - Supabase migrations & Edge Functions 自动部署。
-  - Lint/Test：ESLint, Vitest/Jest, Playwright。
-- **配置管理**：`.env.local`（前端）和 Supabase config；Secrets 包括 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_ID`。
+## 8. 本地开发
+1. `npm install`（根目录、`web/` 如有需要）。
+2. `cd web && npm run dev`，默认监听 `http://localhost:3000`。
+3. Supabase Auth：在 Dashboard 的 `Authentication -> URL Configuration` 中，将 `Site URL` 与 `Redirect URLs` 设置为 `http://localhost:3000` 与 `http://localhost:3000/auth/callback`。
+4. 登录流程：`/login` → Magic Link → `/auth/callback`；若 Supabase 返回 `#access_token`，前端 `AuthHashHandler` 会自动解析。
 
-## 10. 迭代路线
-1. **MVP**
-   - 合同上传 + 解析（仅 PDF 文本）
-   - 基础风险检测（固定 prompt + pgvector 检索）
-   - 风险列表 + 报告导出
-2. **v1**
-   - 版本比对、关键条款库、法规数据库
-   - OCR、长文档 chunking、LLM 结果可编辑
-   - 通知与审批流
-3. **v2**
-   - 自动化工作流、模板生成、第三方 API
-   - 审计报表、计费/套餐、客户门户
+## 9. CI/CD & 任务运行
+- GitHub Actions 可部署/触发 Edge Functions（Invoke Task Runner workflow 如不需要可禁用）。
+- 任务调度：可用 Supabase Scheduler、Upstash QStash 或 GitHub Action 定期调用 `task-runner`、`notification-dispatcher`、`regulation-sync`。
 
-## 11. 开发节奏建议
-- 每个模块以 feature flag 控制上线。
-- 对高价值 LLM 任务（如风险识别）做好缓存与回放测试。
-- 对法规更新、LLM Prompt 变动设置审批与 A/B 实验。
+## 10. TODO & 扩展建议
+- 关键条款/法规 UI 已实现基本展示，可继续丰富筛选、批注。
+- 审批流可扩展多级流程、附件上传等。
+- 报告导出当前为 Markdown，可接入 PDF 服务（如 Puppeteer、Vercel OG）。
+- 提供更多 Agent 可视化监控、任务依赖图。
 
-## 前端（Next.js）
-- 目录：`web/`，使用 Next.js App Router + Tailwind。
-- 环境变量：在 `web/.env.local` 中配置 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`、`CONTRACTS_BUCKET`。
-- 运行：`cd web && npm install && npm run dev`。
-- 功能：上传合同（调用 `/api/upload` + `/api/ingest`）、查看合同列表（`/contracts`）以及 dashboard 首页。
-
-
-## 登录与多租户
-- 访问 `/login`，输入邮箱后系统发送 Magic Link（Supabase OTP），回调 `/auth/callback` 完成登录。
-- 顶部导航右侧展示当前账号（NavUser），可退出登录。
-- `.env.local` 增加 `NEXT_PUBLIC_SITE_URL`（在本地为 `http://localhost:3000`），用于生成回调链接。
-- 后续可在 `tenant_users` 表中配置用户与租户映射，再在前端根据 session metadata 自动带入 tenant_id。
-
+---
+如需新增功能或部署帮助，请同步更新本指南，保持流程/环境一致性。*** End Patch
