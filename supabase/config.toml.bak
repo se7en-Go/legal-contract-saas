@@ -1,0 +1,7 @@
+project_id = "crndpzhpvhcncoscoiba"
+
+[functions]
+ignore = ["supabase/functions/_shared", "**/node_modules", "**/.git"]
+
+[api]
+schemas = ["public", "storage", "graphql_public", "pgbouncer", "extensions"]
