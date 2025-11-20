@@ -1,41 +1,41 @@
-# ¿ª·¢Ö¸ÄÏ£¨Legal AI ºÏÍ¬Éó²é SaaS£©
+ï»¿# å¼€å‘æŒ‡å—ï¼ˆLegal AI åˆåŒå®¡æŸ¥ SaaSï¼‰
 
-## 1. ²úÆ·¶¨Î»ÓëÄ¿±ê
-- ÃæÏòÂÉËùÓë·¨ÎñÍÅ¶Ó£¬×Ô¶¯Ê¶±ğºÏÍ¬·çÏÕÌõ¿î¡¢²»ºÏ¹æÄÚÈİ£¬²¢¸ø³ö»ùÓÚ×îĞÂ·¨¹æµÄĞŞ¸Ä½¨Òé¡£
-- Ö§³ÖºÏÍ¬°æ±¾±È¶Ô¡¢¹Ø¼üÌõ¿îÌáÈ¡¡¢¹éµµ¼°Ğ­Í¬ÉóÔÄ¡£
-- ºó¶ËÒÔ Supabase ÎªºËĞÄ£¬µ÷ÓÃ×Ô½¨ LLM£¨×Ô¶¨Òå base URL/API Key/Model Id£©¡£
+## 1. äº§å“å®šä½ä¸ç›®æ ‡
+- é¢å‘å¾‹æ‰€ä¸æ³•åŠ¡å›¢é˜Ÿï¼Œè‡ªåŠ¨è¯†åˆ«åˆåŒé£é™©æ¡æ¬¾ã€ä¸åˆè§„å†…å®¹ï¼Œå¹¶ç»™å‡ºåŸºäºæœ€æ–°æ³•è§„çš„ä¿®æ”¹å»ºè®®ã€‚
+- æ”¯æŒåˆåŒç‰ˆæœ¬æ¯”å¯¹ã€å…³é”®æ¡æ¬¾æå–ã€å½’æ¡£åŠååŒå®¡é˜…ã€‚
+- åç«¯ä»¥ Supabase ä¸ºæ ¸å¿ƒï¼Œè°ƒç”¨è‡ªå»º LLMï¼ˆè‡ªå®šä¹‰ base URL/API Key/Model Idï¼‰ã€‚
 
-## 2. ×ÜÌå¼Ü¹¹
+## 2. æ€»ä½“æ¶æ„
 ```
-Client (Next.js / Nuxt) ©¤? API SDK ©¤? Supabase Edge Functions
-                                   ©¦
-                                   ©À©¤? Supabase Postgres + Storage + Auth + Realtime
-                                   ©À©¤? pgvector ¼ìË÷£¨ºÏÍ¬Ìõ¿î¡¢·¨¹æÏòÁ¿£©
-                                   ©À©¤? Object Storage (PDF/Word/OCR)
-                                   ©À©¤? ¶ÓÁĞ (Supabase Scheduler + Upstash/QStash) ÓÃÓÚ³¤ºÄÊ±ÈÎÎñ
-                                   ©¸©¤? ×Ô½¨ LLM Service (Base URL / API Key / Model ID)
+Client (Next.js / Nuxt) â”€? API SDK â”€? Supabase Edge Functions
+                                   â”‚
+                                   â”œâ”€? Supabase Postgres + Storage + Auth + Realtime
+                                   â”œâ”€? pgvector æ£€ç´¢ï¼ˆåˆåŒæ¡æ¬¾ã€æ³•è§„å‘é‡ï¼‰
+                                   â”œâ”€? Object Storage (PDF/Word/OCR)
+                                   â”œâ”€? é˜Ÿåˆ— (Supabase Scheduler + Upstash/QStash) ç”¨äºé•¿è€—æ—¶ä»»åŠ¡
+                                   â””â”€? è‡ªå»º LLM Service (Base URL / API Key / Model ID)
 ```
-- ËùÓĞµ÷ÓÃÍ¨¹ı Supabase JWT ¼øÈ¨£¬Edge Functions ¸ºÔğ×éºÏÒµÎñÂß¼­¡¢ÈÎÎñ±àÅÅ¡£
-- ÎÄµµ½âÎö/OCR ¿É²¿Êğ¶ÀÁ¢½âÎö·şÎñ£¨Docling/Document AI£©²¢Í¨¹ı Webhook Óë Edge Functions Í¨ĞÅ¡£
+- æ‰€æœ‰è°ƒç”¨é€šè¿‡ Supabase JWT é‰´æƒï¼ŒEdge Functions è´Ÿè´£ç»„åˆä¸šåŠ¡é€»è¾‘ã€ä»»åŠ¡ç¼–æ’ã€‚
+- æ–‡æ¡£è§£æ/OCR å¯éƒ¨ç½²ç‹¬ç«‹è§£ææœåŠ¡ï¼ˆDocling/Document AIï¼‰å¹¶é€šè¿‡ Webhook ä¸ Edge Functions é€šä¿¡ã€‚
 
-## 3. ¼¼ÊõÕ»
-- Ç°¶Ë£ºReact + Next.js 14 (App Router, Server Actions) »ò Vue + Nuxt 3£¨SSR£©¡£
-- ºó¶Ë£ºSupabase (Postgres 15 + pgvector) + Edge Functions (TypeScript / Deno)¡£
-- LLM£º×Ô½¨ÍÆÀí·şÎñ£¬Í³Ò»·â×° SDK£¬Ö§³ÖÍ¬²½/Á÷Ê½ÏìÓ¦¡¢ÖØÊÔ¡¢Éó¼ÆÈÕÖ¾¡£
-- ÎÄµµ´¦Àí£ºLangChain¡¢Docling¡¢pdfminer¡¢Azure Form Recognizer£¨¿ÉÑ¡£©¡£
-- Á÷³Ì¹¤¾ß£ºUpstash/QStash¡¢Supabase Scheduler¡¢Supabase Realtime¡£
-- ¼à¿Ø£ºSupabase Logs¡¢Logflare¡¢Sentry/Highlight¡¢Prometheus/Grafana (×Ô½¨·şÎñ)¡£
+## 3. æŠ€æœ¯æ ˆ
+- å‰ç«¯ï¼šReact + Next.js 14 (App Router, Server Actions) æˆ– Vue + Nuxt 3ï¼ˆSSRï¼‰ã€‚
+- åç«¯ï¼šSupabase (Postgres 15 + pgvector) + Edge Functions (TypeScript / Deno)ã€‚
+- LLMï¼šè‡ªå»ºæ¨ç†æœåŠ¡ï¼Œç»Ÿä¸€å°è£… SDKï¼Œæ”¯æŒåŒæ­¥/æµå¼å“åº”ã€é‡è¯•ã€å®¡è®¡æ—¥å¿—ã€‚
+- æ–‡æ¡£å¤„ç†ï¼šLangChainã€Doclingã€pdfminerã€Azure Form Recognizerï¼ˆå¯é€‰ï¼‰ã€‚
+- æµç¨‹å·¥å…·ï¼šUpstash/QStashã€Supabase Schedulerã€Supabase Realtimeã€‚
+- ç›‘æ§ï¼šSupabase Logsã€Logflareã€Sentry/Highlightã€Prometheus/Grafana (è‡ªå»ºæœåŠ¡)ã€‚
 
-## 4. Ä£¿é»®·Ö
-1. **ºÏÍ¬¹ÜÀí**£ºÉÏ´«¡¢OCR¡¢½á¹¹»¯½âÎö¡¢°æ±¾¹ÜÀí¡£
-2. **·çÏÕÊ¶±ğÒıÇæ**£ºÌõ¿î¼¶·çÏÕ¼ì²â¡¢·çÏÕµÈ¼¶¡¢Õû¸Ä½¨Òé¡£
-3. **·¨¹æ¶ÔÕÕ**£º·¨¹æ¿â¹ÜÀí¡¢·¨¹æ¸üĞÂÈÎÎñ¡¢Ìõ¿î-·¨¹æÒıÓÃ¡£
-4. **¹Ø¼üÌõ¿îÌáÈ¡**£º×Ô¶¯ÌáÈ¡¸¶¿î¡¢Î¥Ô¼¡¢±£ÃÜµÈ¹Ø¼üÌõ¿î²¢¹éµµ¡£
-5. **°æ±¾±È¶Ô**£ºÓïÒå + ÎÄ±¾ diff£¬·çÏÕ±ä»¯×·×Ù¡£
-6. **Ğ­×÷ÓëÉó¼Æ**£ºÆÀÂÛ¡¢Ö¸ÅÉ¡¢Í¨Öª¡¢²Ù×÷ÈÕÖ¾¡£
-7. **ÏµÍ³¹ÜÀí**£º×â»§¡¢½ÇÉ«¡¢È¨ÏŞ¡¢¼Æ»®/¼Æ·Ñ£¨ºóĞø£©¡£
+## 4. æ¨¡å—åˆ’åˆ†
+1. **åˆåŒç®¡ç†**ï¼šä¸Šä¼ ã€OCRã€ç»“æ„åŒ–è§£æã€ç‰ˆæœ¬ç®¡ç†ã€‚
+2. **é£é™©è¯†åˆ«å¼•æ“**ï¼šæ¡æ¬¾çº§é£é™©æ£€æµ‹ã€é£é™©ç­‰çº§ã€æ•´æ”¹å»ºè®®ã€‚
+3. **æ³•è§„å¯¹ç…§**ï¼šæ³•è§„åº“ç®¡ç†ã€æ³•è§„æ›´æ–°ä»»åŠ¡ã€æ¡æ¬¾-æ³•è§„å¼•ç”¨ã€‚
+4. **å…³é”®æ¡æ¬¾æå–**ï¼šè‡ªåŠ¨æå–ä»˜æ¬¾ã€è¿çº¦ã€ä¿å¯†ç­‰å…³é”®æ¡æ¬¾å¹¶å½’æ¡£ã€‚
+5. **ç‰ˆæœ¬æ¯”å¯¹**ï¼šè¯­ä¹‰ + æ–‡æœ¬ diffï¼Œé£é™©å˜åŒ–è¿½è¸ªã€‚
+6. **åä½œä¸å®¡è®¡**ï¼šè¯„è®ºã€æŒ‡æ´¾ã€é€šçŸ¥ã€æ“ä½œæ—¥å¿—ã€‚
+7. **ç³»ç»Ÿç®¡ç†**ï¼šç§Ÿæˆ·ã€è§’è‰²ã€æƒé™ã€è®¡åˆ’/è®¡è´¹ï¼ˆåç»­ï¼‰ã€‚
 
-## 5. Êı¾İ¿âÉè¼Æ£¨Supabase Postgres£©
+## 5. æ•°æ®åº“è®¾è®¡ï¼ˆSupabase Postgresï¼‰
 - `tenants (id, name, plan, settings, created_at)`
 - `users (id, email, profile, created_at)`
 - `tenant_users (tenant_id, user_id, role, status)`
@@ -49,69 +49,76 @@ Client (Next.js / Nuxt) ©¤? API SDK ©¤? Supabase Edge Functions
 - `notifications (id, tenant_id, entity, message, read_at)`
 - `audit_logs (id, tenant_id, actor_id, action, payload, created_at)`
 - `annotations/comments (id, contract_version_id, clause_id, content, created_by, created_at)`
-- ËùÓĞ±íÆôÓÃ Row Level Security£¬policy ÒÔ `tenant_id` ¹ıÂË¡£
+- æ‰€æœ‰è¡¨å¯ç”¨ Row Level Securityï¼Œpolicy ä»¥ `tenant_id` è¿‡æ»¤ã€‚
 
-## 6. ºËĞÄÁ÷³Ì
-### 6.1 ºÏÍ¬ÉÏ´« & ½âÎö
-1. ¿Í»§¶ËÉÏ´«ÎÄ¼ş ¡ú Supabase Storage£¨Ê¹ÓÃÇ©Ãû URL£©¡£
-2. ´¥·¢ Edge Function£º´´½¨ `task` ¼ÇÂ¼£¬µ÷ÓÃ½âÎö·şÎñ¡£
-3. ½âÎöÊä³ö£ºÔ­ÎÄ¡¢½á¹¹»¯ JSON¡¢Ò³Ãæ×ø±ê¡¢embedding ¡ú Ğ´Èë `contract_versions` / `clauses` ±í¡£
-4. ½«Ìõ¿î embedding Ğ´Èë pgvector£¬ÓÃÓÚºóĞø¼ìË÷¡£
+## 6. æ ¸å¿ƒæµç¨‹
+### 6.1 åˆåŒä¸Šä¼  & è§£æ
+1. å®¢æˆ·ç«¯ä¸Šä¼ æ–‡ä»¶ â†’ Supabase Storageï¼ˆä½¿ç”¨ç­¾å URLï¼‰ã€‚
+2. è§¦å‘ Edge Functionï¼šåˆ›å»º `task` è®°å½•ï¼Œè°ƒç”¨è§£ææœåŠ¡ã€‚
+3. è§£æè¾“å‡ºï¼šåŸæ–‡ã€ç»“æ„åŒ– JSONã€é¡µé¢åæ ‡ã€embedding â†’ å†™å…¥ `contract_versions` / `clauses` è¡¨ã€‚
+4. å°†æ¡æ¬¾ embedding å†™å…¥ pgvectorï¼Œç”¨äºåç»­æ£€ç´¢ã€‚
 
-### 6.2 ·çÏÕÊ¶±ğ & ·¨¹æ¶ÔÕÕ
-1. ¸ù¾İ `clauses` embeddings + ¹æÔò¿â¼ìË÷ÉÏÏÂÎÄ£¨Top-k£©¡£
-2. ¹¹½¨ prompt£ºÏµÍ³½ÇÉ«=·¨ÂÉ×¨¼Ò£¬ÊäÈëÌõ¿îÎÄ±¾ + ºÏÍ¬ÔªÊı¾İ + Æ¥Åä·¨¹æÕªÒª¡£
-3. µ÷ÓÃ×Ô½¨ LLM£¬µÃµ½ JSON£º`[{clause_no, risk_level, finding, recommendation, regulation_refs}]`¡£
-4. Edge Function Ğ£Ñé JSON schema£¬Ğ´Èë `risk_findings`£¬Í¬Ê±¼ÇÂ¼ LLM trace¡£
-5. ¶ÔÕÕ×îĞÂ·¨¹æ£ºÏòÁ¿¼ìË÷ + °æ±¾¼ì²é£¬Èô·¨¹æÒÑ¸üĞÂÔò´¥·¢ÖØĞÂÉó²éÈÎÎñ¡£
+### 6.2 é£é™©è¯†åˆ« & æ³•è§„å¯¹ç…§
+1. æ ¹æ® `clauses` embeddings + è§„åˆ™åº“æ£€ç´¢ä¸Šä¸‹æ–‡ï¼ˆTop-kï¼‰ã€‚
+2. æ„å»º promptï¼šç³»ç»Ÿè§’è‰²=æ³•å¾‹ä¸“å®¶ï¼Œè¾“å…¥æ¡æ¬¾æ–‡æœ¬ + åˆåŒå…ƒæ•°æ® + åŒ¹é…æ³•è§„æ‘˜è¦ã€‚
+3. è°ƒç”¨è‡ªå»º LLMï¼Œå¾—åˆ° JSONï¼š`[{clause_no, risk_level, finding, recommendation, regulation_refs}]`ã€‚
+4. Edge Function æ ¡éªŒ JSON schemaï¼Œå†™å…¥ `risk_findings`ï¼ŒåŒæ—¶è®°å½• LLM traceã€‚
+5. å¯¹ç…§æœ€æ–°æ³•è§„ï¼šå‘é‡æ£€ç´¢ + ç‰ˆæœ¬æ£€æŸ¥ï¼Œè‹¥æ³•è§„å·²æ›´æ–°åˆ™è§¦å‘é‡æ–°å®¡æŸ¥ä»»åŠ¡ã€‚
 
-### 6.3 ĞŞ¸Ä½¨ÒéÓë°æ±¾±È¶Ô
-- LLM Éú³ÉĞŞ¸ÄºóµÄÌõ¿îÎÄ±¾£¬´æÈë `clause_rewrites` ±í¹©ÉóÔÄ¡£
-- Ê¹ÓÃ diff-match-patch »ò jsdiff Éú³É°æ±¾²îÒì£¬¸½´ø·çÏÕ±ä»¯Ö¸±ê¡£
+### 6.3 ä¿®æ”¹å»ºè®®ä¸ç‰ˆæœ¬æ¯”å¯¹
+- LLM ç”Ÿæˆä¿®æ”¹åçš„æ¡æ¬¾æ–‡æœ¬ï¼Œå­˜å…¥ `clause_rewrites` è¡¨ä¾›å®¡é˜…ã€‚
+- ä½¿ç”¨ diff-match-patch æˆ– jsdiff ç”Ÿæˆç‰ˆæœ¬å·®å¼‚ï¼Œé™„å¸¦é£é™©å˜åŒ–æŒ‡æ ‡ã€‚
 
-### 6.4 ¹Ø¼üÌõ¿îÌáÈ¡
-- ÔÚ½âÎö½×¶ÎÔö¼ÓÒ»¸ö LLM ÈÎÎñ£¬Êä³ö¹Ø¼üÌõ¿îÁĞ±í£¨Àà±ğ¡¢ÔğÈÎÖ÷Ìå¡¢½ğ¶î/ÈÕÆÚµÈ£©£¬Ğ´Èë `key_clauses`¡£
-- Ìá¹©°´Àà±ğ¡¢¿Í»§¡¢ºÏÍ¬ÀàĞÍµÄ¼ìË÷½Ó¿Ú¡£
+### 6.4 å…³é”®æ¡æ¬¾æå–
+- åœ¨è§£æé˜¶æ®µå¢åŠ ä¸€ä¸ª LLM ä»»åŠ¡ï¼Œè¾“å‡ºå…³é”®æ¡æ¬¾åˆ—è¡¨ï¼ˆç±»åˆ«ã€è´£ä»»ä¸»ä½“ã€é‡‘é¢/æ—¥æœŸç­‰ï¼‰ï¼Œå†™å…¥ `key_clauses`ã€‚
+- æä¾›æŒ‰ç±»åˆ«ã€å®¢æˆ·ã€åˆåŒç±»å‹çš„æ£€ç´¢æ¥å£ã€‚
 
-## 7. LLM ¼¯³ÉÉè¼Æ
-- SDK ¸ºÔğ£º¼øÈ¨¡¢³¬Ê±¡¢ÖØÊÔ¡¢ÏŞÁ÷¡¢Á÷Ê½£¨Server-Sent Events£©¡£
-- Prompt Ä£°å´æ´¢ÔÚ `prompts` Ä¿Â¼²¢°æ±¾»¯£¬°üº¬£º
+## 7. LLM é›†æˆè®¾è®¡
+- SDK è´Ÿè´£ï¼šé‰´æƒã€è¶…æ—¶ã€é‡è¯•ã€é™æµã€æµå¼ï¼ˆServer-Sent Eventsï¼‰ã€‚
+- Prompt æ¨¡æ¿å­˜å‚¨åœ¨ `prompts` ç›®å½•å¹¶ç‰ˆæœ¬åŒ–ï¼ŒåŒ…å«ï¼š
   - `risk_detection.prompt`
   - `regulation_alignment.prompt`
   - `clause_rewrite.prompt`
   - `summary_generation.prompt`
-- ·µ»Ø½á¹ûÍ³Ò» JSON Schema£¨Ê¹ÓÃ zod/superstruct Ğ£Ñé£©¡£
-- ¼ÇÂ¼ `llm_requests` ±í£ºprompt, variables, settings, latency, response hash¡£
+- è¿”å›ç»“æœç»Ÿä¸€ JSON Schemaï¼ˆä½¿ç”¨ zod/superstruct æ ¡éªŒï¼‰ã€‚
+- è®°å½• `llm_requests` è¡¨ï¼šprompt, variables, settings, latency, response hashã€‚
 
-## 8. °²È«ÓëºÏ¹æ
-- Ç¿ÖÆ HTTPS¡¢JWT + RLS¡£
-- Storage ¸ù¾İ×â»§¸ôÀëÂ·¾¶ `/tenant_id/contracts/...`¡£
-- ºÏÍ¬Óë·¨¹æÎÄ±¾Ê¹ÓÃÁĞ¼¶±ğ¼ÓÃÜ£¨pgcrypto£©»òÍâ²¿ KMS¡£
-- ËùÓĞµ¼³ö²Ù×÷ĞèÒªÉó¼ÆÈÕÖ¾¼ÇÂ¼¡£
-- ¶¨ÆÚ·¨ÂÉ·¨¹æ¸üĞÂ£»Ìá¹©¹ÜÀíÔ±ÉóÅúÁ÷³Ì¡£
+## 8. å®‰å…¨ä¸åˆè§„
+- å¼ºåˆ¶ HTTPSã€JWT + RLSã€‚
+- Storage æ ¹æ®ç§Ÿæˆ·éš”ç¦»è·¯å¾„ `/tenant_id/contracts/...`ã€‚
+- åˆåŒä¸æ³•è§„æ–‡æœ¬ä½¿ç”¨åˆ—çº§åˆ«åŠ å¯†ï¼ˆpgcryptoï¼‰æˆ–å¤–éƒ¨ KMSã€‚
+- æ‰€æœ‰å¯¼å‡ºæ“ä½œéœ€è¦å®¡è®¡æ—¥å¿—è®°å½•ã€‚
+- å®šæœŸæ³•å¾‹æ³•è§„æ›´æ–°ï¼›æä¾›ç®¡ç†å‘˜å®¡æ‰¹æµç¨‹ã€‚
 
-## 9. ²¿ÊğÓë»·¾³
-- **»·¾³**£ºdev / staging / prod£¨¶ÀÁ¢ Supabase ÏîÄ¿£©¡£
-- **CI/CD**£ºGitHub Actions
-  - Ç°¶Ë²âÊÔÓë¹¹½¨ ¡ú Vercel/Netlify¡£
-  - Supabase migrations & Edge Functions ×Ô¶¯²¿Êğ¡£
-  - Lint/Test£ºESLint, Vitest/Jest, Playwright¡£
-- **ÅäÖÃ¹ÜÀí**£º`.env.local`£¨Ç°¶Ë£©ºÍ Supabase config£»Secrets °üÀ¨ `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_ID`¡£
+## 9. éƒ¨ç½²ä¸ç¯å¢ƒ
+- **ç¯å¢ƒ**ï¼šdev / staging / prodï¼ˆç‹¬ç«‹ Supabase é¡¹ç›®ï¼‰ã€‚
+- **CI/CD**ï¼šGitHub Actions
+  - å‰ç«¯æµ‹è¯•ä¸æ„å»º â†’ Vercel/Netlifyã€‚
+  - Supabase migrations & Edge Functions è‡ªåŠ¨éƒ¨ç½²ã€‚
+  - Lint/Testï¼šESLint, Vitest/Jest, Playwrightã€‚
+- **é…ç½®ç®¡ç†**ï¼š`.env.local`ï¼ˆå‰ç«¯ï¼‰å’Œ Supabase configï¼›Secrets åŒ…æ‹¬ `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_ID`ã€‚
 
-## 10. µü´úÂ·Ïß
+## 10. è¿­ä»£è·¯çº¿
 1. **MVP**
-   - ºÏÍ¬ÉÏ´« + ½âÎö£¨½ö PDF ÎÄ±¾£©
-   - »ù´¡·çÏÕ¼ì²â£¨¹Ì¶¨ prompt + pgvector ¼ìË÷£©
-   - ·çÏÕÁĞ±í + ±¨¸æµ¼³ö
+   - åˆåŒä¸Šä¼  + è§£æï¼ˆä»… PDF æ–‡æœ¬ï¼‰
+   - åŸºç¡€é£é™©æ£€æµ‹ï¼ˆå›ºå®š prompt + pgvector æ£€ç´¢ï¼‰
+   - é£é™©åˆ—è¡¨ + æŠ¥å‘Šå¯¼å‡º
 2. **v1**
-   - °æ±¾±È¶Ô¡¢¹Ø¼üÌõ¿î¿â¡¢·¨¹æÊı¾İ¿â
-   - OCR¡¢³¤ÎÄµµ chunking¡¢LLM ½á¹û¿É±à¼­
-   - Í¨ÖªÓëÉóÅúÁ÷
+   - ç‰ˆæœ¬æ¯”å¯¹ã€å…³é”®æ¡æ¬¾åº“ã€æ³•è§„æ•°æ®åº“
+   - OCRã€é•¿æ–‡æ¡£ chunkingã€LLM ç»“æœå¯ç¼–è¾‘
+   - é€šçŸ¥ä¸å®¡æ‰¹æµ
 3. **v2**
-   - ×Ô¶¯»¯¹¤×÷Á÷¡¢Ä£°åÉú³É¡¢µÚÈı·½ API
-   - Éó¼Æ±¨±í¡¢¼Æ·Ñ/Ì×²Í¡¢¿Í»§ÃÅ»§
+   - è‡ªåŠ¨åŒ–å·¥ä½œæµã€æ¨¡æ¿ç”Ÿæˆã€ç¬¬ä¸‰æ–¹ API
+   - å®¡è®¡æŠ¥è¡¨ã€è®¡è´¹/å¥—é¤ã€å®¢æˆ·é—¨æˆ·
 
-## 11. ¿ª·¢½Ú×à½¨Òé
-- Ã¿¸öÄ£¿éÒÔ feature flag ¿ØÖÆÉÏÏß¡£
-- ¶Ô¸ß¼ÛÖµ LLM ÈÎÎñ£¨Èç·çÏÕÊ¶±ğ£©×öºÃ»º´æÓë»Ø·Å²âÊÔ¡£
-- ¶Ô·¨¹æ¸üĞÂ¡¢LLM Prompt ±ä¶¯ÉèÖÃÉóÅúÓë A/B ÊµÑé¡£
+## 11. å¼€å‘èŠ‚å¥å»ºè®®
+- æ¯ä¸ªæ¨¡å—ä»¥ feature flag æ§åˆ¶ä¸Šçº¿ã€‚
+- å¯¹é«˜ä»·å€¼ LLM ä»»åŠ¡ï¼ˆå¦‚é£é™©è¯†åˆ«ï¼‰åšå¥½ç¼“å­˜ä¸å›æ”¾æµ‹è¯•ã€‚
+- å¯¹æ³•è§„æ›´æ–°ã€LLM Prompt å˜åŠ¨è®¾ç½®å®¡æ‰¹ä¸ A/B å®éªŒã€‚
+
+## å‰ç«¯ï¼ˆNext.jsï¼‰
+- ç›®å½•ï¼š`web/`ï¼Œä½¿ç”¨ Next.js App Router + Tailwindã€‚
+- ç¯å¢ƒå˜é‡ï¼šåœ¨ `web/.env.local` ä¸­é…ç½® `NEXT_PUBLIC_SUPABASE_URL`ã€`NEXT_PUBLIC_SUPABASE_ANON_KEY`ã€`SUPABASE_SERVICE_ROLE_KEY`ã€`CONTRACTS_BUCKET`ã€‚
+- è¿è¡Œï¼š`cd web && npm install && npm run dev`ã€‚
+- åŠŸèƒ½ï¼šä¸Šä¼ åˆåŒï¼ˆè°ƒç”¨ `/api/upload` + `/api/ingest`ï¼‰ã€æŸ¥çœ‹åˆåŒåˆ—è¡¨ï¼ˆ`/contracts`ï¼‰ä»¥åŠ dashboard é¦–é¡µã€‚
+
