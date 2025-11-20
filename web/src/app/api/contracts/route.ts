@@ -1,6 +1,15 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
+type ContractRow = {
+  id: string;
+  title: string;
+  status: string;
+  counterparty: string | null;
+  created_at: string;
+  risk_findings: { count: number }[];
+};
+
 export async function GET(req: NextRequest) {
   const tenantId = req.nextUrl.searchParams.get('tenantId');
   if (!tenantId) {
@@ -9,9 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('contracts')
-    .select(
-      'id, title, status, counterparty, created_at, risk_findings(count)' as any,
-    )
+    .select<ContractRow>('id, title, status, counterparty, created_at, risk_findings(count)')
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false });
 

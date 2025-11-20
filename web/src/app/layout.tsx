@@ -1,32 +1,45 @@
 ﻿import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Plus_Jakarta_Sans, Playfair_Display } from 'next/font/google';
 import './globals.css';
 
+const sans = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-sans' });
+const serif = Playfair_Display({
+  subsets: ['latin'],
+  weight: ['600'],
+  variable: '--font-serif',
+});
+
 export const metadata: Metadata = {
-  title: 'Legal AI Contracts Dashboard',
-  description: 'Upload contracts, monitor tasks and review AI findings.',
+  title: 'LexiGuard AI',
+  description: 'Legal AI SaaS for contract review, risk detection and governance.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang=\"en\">
-      <body className=\"min-h-screen bg-slate-50 text-slate-900\">
-        <div className=\"border-b bg-white shadow-sm\">
-          <div className=\"mx-auto flex max-w-5xl items-center justify-between px-4 py-3\">
-            <Link href=\"/\" className=\"text-lg font-semibold\">
-              Legal AI Review
-            </Link>
-            <nav className=\"flex gap-4 text-sm\">
-              <Link className=\"hover:text-blue-600\" href=\"/contracts\">
-                Contracts
+    <html lang="en" className={${sans.variable} }>
+      <body className="min-h-screen bg-slate-950 text-slate-50 antialiased">
+        <div className="relative min-h-screen bg-gradient-to-b from-slate-950 via-slate-930 to-slate-900">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.2),_transparent_60%)]" />
+          <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
+            <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+              <Link href="/" className="text-2xl font-semibold text-white transition hover:text-cyan-300">
+                Lexi<span className="text-cyan-300">Guard</span>
               </Link>
-              <Link className=\"hover:text-blue-600\" href=\"/upload\">
-                Upload
-              </Link>
-            </nav>
-          </div>
+              <nav className="flex gap-6 text-sm text-slate-200">
+                <Link className="hover:text-cyan-300" href="/contracts">
+                  合同监控
+                </Link>
+                <Link className="hover:text-cyan-300" href="/upload">
+                  上传审阅
+                </Link>
+              </nav>
+            </div>
+          </header>
+          <main className="mx-auto max-w-6xl px-6 py-12">
+            {children}
+          </main>
         </div>
-        <main className=\"mx-auto max-w-5xl px-4 py-10\">{children}</main>
       </body>
     </html>
   );

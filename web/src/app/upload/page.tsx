@@ -14,7 +14,7 @@ export default function UploadPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!tenantId || !title || !file) {
-      setStatus('请填写 tenant_id、合同标题并选择文件。');
+      setStatus('请填写完整信息并选择文件');
       return;
     }
     setLoading(true);
@@ -44,7 +44,7 @@ export default function UploadPage() {
       if (!ingestRes.ok) throw new Error(ingestJson.error || 'ingest-doc 调用失败');
 
       setTaskInfo(ingestJson);
-      setStatus('上传成功，已创建解析任务。稍后在 Contracts 页面查看结果。');
+      setStatus('上传成功，AI 正在解析条款。稍后在「合同监控」查看结果。');
       setTitle('');
       setCounterparty('');
       setFile(null);
@@ -56,37 +56,46 @@ export default function UploadPage() {
   };
 
   return (
-    <div className='space-y-6'>
-      <div className='rounded-xl border bg-white p-6 shadow-sm'>
-        <h2 className='text-lg font-semibold'>上传合同</h2>
-        <p className='text-sm text-slate-500'>系统会自动将文件存入 Supabase Storage，并触发 ingest 任务。</p>
-
-        <form onSubmit={handleSubmit} className='mt-6 space-y-4'>
+    <div className="grid gap-8 lg:grid-cols-[2fr,1fr]">
+      <div className="rounded-3xl border border-white/10 bg-white/90 p-8 shadow-xl">
+        <div className="mb-6 space-y-1">
+          <p className="text-sm uppercase tracking-[0.4em] text-slate-400">Upload</p>
+          <h2 className="text-2xl font-semibold text-slate-900">上传合同</h2>
+          <p className="text-sm text-slate-500">选择 PDF/Word，即可发起 OCR + 解析任务。</p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className='text-sm text-slate-600'>Tenant ID</label>
-            <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} className='mt-1 w-full rounded-lg border px-3 py-2' />
+            <label className="text-xs uppercase tracking-wide text-slate-500">Tenant ID</label>
+            <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
-            <label className='text-sm text-slate-600'>合同标题</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className='mt-1 w-full rounded-lg border px-3 py-2' />
+            <label className="text-xs uppercase tracking-wide text-slate-500">合同标题</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
-            <label className='text-sm text-slate-600'>对方（可选）</label>
-            <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} className='mt-1 w-full rounded-lg border px-3 py-2' />
+            <label className="text-xs uppercase tracking-wide text-slate-500">对方 (可选)</label>
+            <input value={counterparty} onChange={(e) => setCounterparty(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:border-blue-500 focus:outline-none" />
           </div>
           <div>
-            <label className='text-sm text-slate-600'>合同文件</label>
-            <input type='file' onChange={(e) => setFile(e.target.files?.[0] ?? null)} className='mt-1 w-full text-sm' />
+            <label className="text-xs uppercase tracking-wide text-slate-500">合同文件</label>
+            <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="mt-1 w-full rounded-xl border border-dashed border-slate-300 px-3 py-2 text-sm" />
           </div>
-          <button type='submit' disabled={loading} className='rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-500 disabled:opacity-60'>
+          <button type="submit" disabled={loading} className="w-full rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-4 py-3 text-white shadow-lg shadow-blue-600/40 disabled:opacity-60">
             {loading ? '上传中…' : '上传并创建任务'}
           </button>
         </form>
-        {status && <p className='mt-4 text-sm text-slate-600'>{status}</p>}
-        {taskInfo && (
-          <pre className='mt-4 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100'>
+        {status && <p className="mt-4 text-sm text-slate-700">{status}</p>}
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/80 p-6 shadow-xl">
+        <h3 className="text-lg font-semibold text-slate-900">最新任务</h3>
+        <p className="text-sm text-slate-500">系统会自动记录 contract_id / version / task_id，便于排查。</p>
+        {taskInfo ? (
+          <pre className="mt-4 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
             {JSON.stringify(taskInfo, null, 2)}
           </pre>
+        ) : (
+          <p className="mt-4 text-sm text-slate-500">尚无任务，提交表单后将在此显示。</p>
         )}
       </div>
     </div>
