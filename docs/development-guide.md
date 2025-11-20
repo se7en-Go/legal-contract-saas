@@ -122,3 +122,10 @@ Client (Next.js / Nuxt) ─? API SDK ─? Supabase Edge Functions
 - 运行：`cd web && npm install && npm run dev`。
 - 功能：上传合同（调用 `/api/upload` + `/api/ingest`）、查看合同列表（`/contracts`）以及 dashboard 首页。
 
+
+## 登录与多租户
+- 访问 `/login`，输入邮箱后系统发送 Magic Link（Supabase OTP），回调 `/auth/callback` 完成登录。
+- 顶部导航右侧展示当前账号（NavUser），可退出登录。
+- `.env.local` 增加 `NEXT_PUBLIC_SITE_URL`（在本地为 `http://localhost:3000`），用于生成回调链接。
+- 后续可在 `tenant_users` 表中配置用户与租户映射，再在前端根据 session metadata 自动带入 tenant_id。
+
