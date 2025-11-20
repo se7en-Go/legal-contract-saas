@@ -14,6 +14,7 @@ type Clause = {
 };
 
 const supabase = getServiceClient();
+const CONTRACTS_BUCKET = Deno.env.get("CONTRACTS_BUCKET") ?? "contracts";
 
 function assertAuthorized(req: Request) {
   const authHeader = req.headers.get("authorization") ?? "";
@@ -23,6 +24,16 @@ function assertAuthorized(req: Request) {
   if (!token || token !== envToken) {
     throw new Error("Unauthorized");
   }
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const sub = bytes.subarray(i, i + chunk);
+    binary += String.fromCharCode(...sub);
+  }
+  return btoa(binary);
 }
 
 async function fetchQueuedTask() {
@@ -65,8 +76,57 @@ async function fetchContract(contractId: string) {
   return data;
 }
 
-async function parseContractClauses(contractTitle: string, contractPath: string) {
-  const prompt = `你是一位法律合同整理专家，请根据以下信息，将合同拆解为条款列表，包含条款编号、标题、正文。\n如果合同正文在 object storage 路径 ${contractPath}，请结合合同标题 ${contractTitle} 进行解析。\n输出 JSON，格式 { \"clauses\": [{\"number\": \"1\", \"title\": \"\", \"text\": \"\"}, ...] }。`;
+async function downloadContractBytes(path: string) {
+  const { data, error } = await supabase.storage.from(CONTRACTS_BUCKET).download(path);
+  if (error || !data) throw new Error(`Failed to download contract: ${error?.message ?? "unknown"}`);
+  const buffer = await data.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function performOcr(contractTitle: string, fileBytes: Uint8Array) {
+  const baseUrl = Deno.env.get("OCR_BASE_URL");
+  const apiKey = Deno.env.get("OCR_API_KEY");
+  const model = Deno.env.get("OCR_MODEL_ID");
+  if (!baseUrl || !apiKey || !model) {
+    throw new Error("Missing OCR configuration");
+  }
+
+  const payload = {
+    model,
+    temperature: 0,
+    messages: [
+      { role: "system", content: "你是OCR专家，请将合同内容识别为可阅读的中文文本。" },
+      {
+        role: "user",
+        content:
+          `合同标题：${contractTitle}\n以下是合同文件的Base64编码，请解码成可阅读的文本：\n${bytesToBase64(fileBytes)}`,
+      },
+    ],
+  };
+
+  const url = `${baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`OCR request failed: ${response.status} ${text}`);
+  }
+
+  const json = await response.json();
+  const content = json?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("OCR 未返回内容");
+  return content as string;
+}
+
+async function parseContractClauses(contractTitle: string, rawText: string) {
+  const prompt = `你是一位法律合同整理专家，请根据以下文本，将合同拆解为条款列表，包含条款编号、标题、正文。\n合同标题：${contractTitle}\n合同正文：\n${rawText}\n\n输出 JSON，格式 { \"clauses\": [{\"number\": \"1\", \"title\": \"\", \"text\": \"\"}, ...] }。`;
 
   const response = await callLlm({
     response_format: { type: "json_object" },
@@ -138,8 +198,10 @@ Deno.serve(async (req) => {
 
     const version = await fetchContractVersion(contractVersionId);
     const contract = await fetchContract(version.contract_id);
+    const fileBytes = await downloadContractBytes(version.source_path);
+    const rawText = await performOcr(contract.title, fileBytes);
 
-    const clauses = await parseContractClauses(contract.title, version.source_path);
+    const clauses = await parseContractClauses(contract.title, rawText);
     await insertClauses(contractVersionId, clauses);
     await runRiskAnalysis(task.tenant_id, contractVersionId);
     await markTask(task.id, { status: "completed", updated_at: new Date().toISOString() });

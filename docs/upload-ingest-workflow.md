@@ -61,3 +61,9 @@ curl https://crndpzhpvhcncoscoiba.functions.supabase.co/risk-analyzer \
 - `risk-analyzer` 未生成数据时检查 `clauses` 是否已有内容，以及 LLM 接口返回 JSON 是否被成功解析。
 
 按照以上步骤，即可完成一次从上传、入库、解析到风险识别的闭环，后续可将解析 Agent、通知、版本 diff 等模块接入到同一任务流中。
+
+## 7. OCR 配置
+- 在 Supabase secrets 中设置：`OCR_BASE_URL`（如 https://api.siliconflow.cn）、`OCR_API_KEY`（DeepSeek OCR 密钥）、`OCR_MODEL_ID`（默认 `deepseek-ai/DeepSeek-OCR`）。
+- 可选：`CONTRACTS_BUCKET` 用于指定存储桶名称。
+- `task-runner` 会下载 Storage 中的合同文件，转为 Base64 传给 DeepSeek OCR，获取纯文本后再调用条款解析。
+
