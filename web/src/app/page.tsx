@@ -33,15 +33,24 @@ export default function HomePage() {
     const code = searchParams.get('code');
     const error = searchParams.get('error');
 
+    // 添加调试日志
+    if (code || error) {
+      console.log('🔍 Home page handling:', { code: code ? 'PRESENT' : 'MISSING', error });
+    }
+
     if (error) {
       // 如果有错误，跳转到登录页面
+      console.log('🔄 Redirecting to login with error:', error);
       router.push(`/login?error=${encodeURIComponent(error)}`);
       return;
     }
 
     if (code) {
       // 如果有 code 参数，跳转到回调路由处理
-      router.push(`/auth/callback?code=${code}`);
+      console.log('🔄 Redirecting to auth callback with code');
+      const next = searchParams.get('next');
+      const callbackUrl = next ? `/auth/callback?code=${code}&next=${encodeURIComponent(next)}` : `/auth/callback?code=${code}`;
+      router.push(callbackUrl);
       return;
     }
   }, [router, searchParams]);
