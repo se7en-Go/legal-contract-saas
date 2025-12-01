@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ claus
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const rowTenantId = clauseRow.contract_version?.contract?.[0]?.tenant_id;
+  const rowTenantId = (clauseRow as any)?.contract_version?.contract?.[0]?.tenant_id;
   if (rowTenantId !== tenantId) {
     return NextResponse.json({ error: '无权编辑其他租户的条款' }, { status: 403 });
   }
