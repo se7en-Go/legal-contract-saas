@@ -1,4 +1,8 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 const stats = [
   { label: '累计处理合同', value: '1,248', sub: '近 30 天' },
@@ -22,6 +26,26 @@ const pillars = [
 ];
 
 export default function HomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const code = searchParams.get('code');
+    const error = searchParams.get('error');
+
+    if (error) {
+      // 如果有错误，跳转到登录页面
+      router.push(`/login?error=${encodeURIComponent(error)}`);
+      return;
+    }
+
+    if (code) {
+      // 如果有 code 参数，跳转到回调路由处理
+      router.push(`/auth/callback?code=${code}`);
+      return;
+    }
+  }, [router, searchParams]);
+
   return (
     <div className="space-y-12">
       <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 px-8 py-12 shadow-2xl">
