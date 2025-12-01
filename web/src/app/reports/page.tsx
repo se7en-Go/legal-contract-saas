@@ -1,177 +1,183 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTenantSession } from '@/hooks/use-tenant-session';
 
-type Insights = {
-  totals: { contracts: number; risks: number; highRisks: number; openTasks: number };
-  statuses: { contractStatus: Record<string, number>; riskLevel: Record<string, number> };
-  tasks: { id: string; task_type: string; status: string; created_at: string }[];
-  notifications: { id: string; message: string; created_at: string }[];
+type ReportCache = {
+  markdown: string;
+  error?: string;
 };
 
-type Risk = {
+type TaskSummary = {
   id: string;
-  risk_level: string;
-  risk_type: string | null;
-  description: string | null;
-  recommendation: string | null;
-};
-
-type Clause = {
-  id: string;
-  category: string;
-  summary: string | null;
-  contract_version: { contract: { title: string } | null } | null;
-};
-
-type ReportState = {
-  insights: Insights | null;
-  risks: Risk[];
-  clauses: Clause[];
-};
-
-const fetchJson = async <T,>(url: string): Promise<T> => {
-  const res = await fetch(url, { cache: 'no-store' });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data?.error || `request failed: ${url}`);
-  }
-  return data;
+  task_type: string;
+  status: string;
+  created_at: string;
 };
 
 export default function ReportsPage() {
   const { session, loading: sessionLoading, error: sessionError } = useTenantSession();
-  const [state, setState] = useState<ReportState>({ insights: null, risks: [], clauses: [] });
-  const [report, setReport] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const searchParams = useSearchParams();
+  const [exporting, setExporting] = useState(false);
+  const [markdown, setMarkdown] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [dateRange, setDateRange] = useState('30d');
+  const [contractType, setContractType] = useState('all');
+  const [contractId, setContractId] = useState(searchParams.get('contractId') ?? '');
+  const [copying, setCopying] = useState(false);
 
-  useEffect(() => {
+  const handleCopy = async () => {
+    if (!markdown) return;
+    setCopying(true);
+    try {
+      await navigator.clipboard.writeText(markdown);
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  const handleDownloadMarkdown = () => {
+    if (!markdown) return;
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'insight-report.md';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const fetchTasks = useCallback(async () => {
     if (!session?.tenant_id) return;
-    const fetchAll = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [insights, risksRes, clausesRes] = await Promise.all([
-          fetchJson<Insights>('/api/insights'),
-          fetchJson<{ risks: Risk[] }>('/api/risk-findings'),
-          fetchJson<{ clauses: Clause[] }>('/api/key-clauses'),
-        ]);
-        setState({ insights, risks: risksRes.risks ?? [], clauses: clausesRes.clauses ?? [] });
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
+    try {
+      const res = await fetch('/api/tasks', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok) {
+        setTasks((data.tasks ?? []).slice(0, 5));
       }
-    };
-    void fetchAll();
+    } catch {
+      // 忽略任务预览错误
+    }
   }, [session?.tenant_id]);
 
-  const downloadReport = async () => {
-    setLoading(true);
+  useEffect(() => {
+    void fetchTasks();
+  }, [fetchTasks]);
+
+  const handleExport = async () => {
+    setExporting(true);
     setError(null);
+    setMarkdown(null);
     try {
-      const res = await fetch('/api/reports/export', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || '导出失败');
-      setReport(data.markdown ?? '');
+      const res = await fetch('/api/reports/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dateRange, contractType, contractId: contractId || undefined }),
+      });
+      const data: ReportCache = await res.json();
+      if (!res.ok) throw new Error(data?.markdown || data?.error || '导出失败');
+      setMarkdown(data.markdown);
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setLoading(false);
+      setExporting(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-white shadow-2xl">
+    <div className="space-y-6 text-slate-100">
+      <div className="surface-card p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm uppercase tracking-[0.4em] text-cyan-300">Insight Reporter</p>
-            <h1 className="text-3xl font-semibold">报告 / 简报</h1>
-            <p className="text-sm text-slate-200">聚合 Risk Analyzer、Version Diff、Clause Rewrite 等结果，生成面向管理层或客户的洞察简报。</p>
+            <p className="text-xs uppercase tracking-[0.35em] text-slate-400">Insight Reporter</p>
+            <h1 className="text-2xl font-semibold text-white">洞察报告</h1>
+            <p className="text-sm text-slate-400">聚合合同、风险、任务等数据，由 Insight Reporter Agent 输出 Markdown 报告。</p>
           </div>
-          <button className="rounded-2xl bg-cyan-400 px-5 py-2 text-slate-900 shadow-lg shadow-cyan-400/50" onClick={downloadReport} disabled={loading}>
-            导出 PDF / HTML
+          <button
+            disabled={exporting}
+            onClick={handleExport}
+            className="rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-500 px-5 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-emerald-500/40 disabled:opacity-50"
+          >
+            {exporting ? '生成中…' : '生成报告'}
           </button>
         </div>
-        <p className="mt-3 text-xs text-slate-300">{sessionLoading ? '获取用户信息…' : session ? `当前 tenant：${session.tenant_id ?? '-'}` : sessionError || '未登录'}</p>
-        {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
+        <div className="mt-4 flex flex-wrap gap-3 text-sm">
+          <select
+            value={dateRange}
+            onChange={(event) => setDateRange(event.target.value)}
+            className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2"
+          >
+            <option value="7d">近 7 天</option>
+            <option value="30d">近 30 天</option>
+            <option value="90d">近 90 天</option>
+          </select>
+          <input
+            value={contractType}
+            onChange={(event) => setContractType(event.target.value || 'all')}
+            placeholder="合同类型（metadata->type）"
+            className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+          />
+          <input
+            value={contractId}
+            onChange={(event) => setContractId(event.target.value)}
+            placeholder="指定合同 ID（可选）"
+            className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+          />
+        </div>
+        <div className="mt-3 text-xs text-slate-400">
+          {sessionLoading ? '正在获取用户信息…' : session ? `当前用户：${session.email}` : sessionError || '未登录'}
+        </div>
+        {error && <p className="mt-2 text-sm text-amber-300">{error}</p>}
       </div>
 
-      <section className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-2xl border border-white/10 bg-white/90 p-4 text-slate-900">
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Contracts</p>
-          <p className="mt-2 text-3xl font-semibold">{state.insights?.totals.contracts ?? '--'}</p>
-          <p className="text-xs text-slate-500">在库合同</p>
+      <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+        <div className="surface-card p-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">报告内容预览</h2>
+            {markdown && (
+              <div className="flex gap-2 text-xs">
+                <button
+                  onClick={handleCopy}
+                  disabled={copying}
+                  className="surface-chip px-3 py-1 disabled:opacity-40"
+                >
+                  {copying ? '复制中…' : '复制 Markdown'}
+                </button>
+                <button onClick={handleDownloadMarkdown} className="surface-chip px-3 py-1">
+                  下载 Markdown
+                </button>
+              </div>
+            )}
+          </div>
+          {markdown ? (
+            <pre className="mt-4 max-h-[480px] overflow-auto rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm text-slate-200">
+              {markdown}
+            </pre>
+          ) : (
+            <p className="mt-4 text-sm text-slate-400">
+              点击“生成报告”后，这里会展示 Insight Reporter 返回的 Markdown 内容，便于复制或导出。
+            </p>
+          )}
         </div>
-        <div className="rounded-2xl border border-white/10 bg-white/90 p-4 text-slate-900">
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Risks</p>
-          <p className="mt-2 text-3xl font-semibold">{state.insights?.totals.risks ?? '--'}</p>
-          <p className="text-xs text-slate-500">高风险 {state.insights?.totals.highRisks ?? 0}</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/90 p-4 text-slate-900">
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Tasks</p>
-          <p className="mt-2 text-3xl font-semibold">{state.insights?.totals.openTasks ?? '--'}</p>
-          <p className="text-xs text-slate-500">未完成 Agent</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/90 p-4 text-slate-900">
-          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Notices</p>
-          <p className="mt-2 text-3xl font-semibold">{state.insights?.notifications.length ?? 0}</p>
-          <p className="text-xs text-slate-500">最新通知</p>
-        </div>
-      </section>
 
-      <section className="grid gap-6 lg:grid-cols-[3fr,2fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl">
-          <h2 className="text-xl font-semibold text-slate-900">高风险回顾</h2>
-          <ul className="mt-4 space-y-4 text-sm">
-            {state.risks.slice(0, 6).map((risk) => (
-              <li key={risk.id} className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{risk.risk_level}</p>
-                <p className="mt-1 font-semibold text-slate-900">{risk.risk_type ?? '未命名风险'}</p>
-                <p className="text-slate-600">{risk.description ?? '暂无描述'}</p>
-                {risk.recommendation && <p className="text-xs text-emerald-600">建议：{risk.recommendation}</p>}
+        <div className="surface-card p-6">
+          <h3 className="text-lg font-semibold text-white">最近任务</h3>
+          <ul className="mt-4 space-y-3 text-sm text-slate-300">
+            {tasks.map((task) => (
+              <li key={task.id} className="surface-panel flex flex-col gap-1 px-4 py-3 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-white">{task.task_type}</span>
+                  <span className="surface-chip px-2 py-0.5 text-xs uppercase">{task.status}</span>
+                </div>
+                <p className="text-xs text-slate-400">{new Date(task.created_at).toLocaleString('zh-CN', { hour12: false })}</p>
               </li>
             ))}
-            {!state.risks.length && <li className="text-slate-500">暂无风险数据，等待 Risk Analyzer 完成。</li>}
-          </ul>
-        </div>
-        <div className="rounded-3xl border border-white/10 bg-slate-950/90 p-6 text-white shadow-xl">
-          <h2 className="text-xl font-semibold">行动计划</h2>
-          <ul className="mt-4 space-y-3 text-sm">
-            {state.insights?.tasks.slice(0, 5).map((task) => (
-              <li key={task.id} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <p className="font-semibold">{task.task_type}</p>
-                <p className="text-xs text-slate-300">状态：{task.status} · {new Date(task.created_at).toLocaleString('zh-CN', { hour12: false })}</p>
-              </li>
-            ))}
-            {!state.insights?.tasks.length && <li className="text-slate-300">暂无任务记录</li>}
+            {!tasks.length && <li className="text-slate-400">暂无任务信息。</li>}
           </ul>
         </div>
       </section>
-
-      <section className="rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl">
-        <h2 className="text-xl font-semibold text-slate-900">关键条款摘要</h2>
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          {state.clauses.slice(0, 6).map((clause) => (
-            <div key={clause.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">{clause.category}</p>
-              <h3 className="mt-2 font-semibold">{clause.contract_version?.contract?.title ?? '未知合同'}</h3>
-              <p className="text-xs text-slate-500">摘要：{clause.summary ?? '暂无'}</p>
-            </div>
-          ))}
-          {!state.clauses.length && <p className="text-slate-500">暂无关键条款，请等待 Key Clause Extraction Agent 完成解析。</p>}
-        </div>
-      </section>
-
-      {report && (
-        <section className="rounded-3xl border border-white/10 bg-white/95 p-6 shadow-xl">
-          <h2 className="text-xl font-semibold text-slate-900">最新导出预览</h2>
-          <pre className="mt-4 overflow-x-auto rounded-2xl bg-slate-900 p-4 text-xs text-slate-100">{report}</pre>
-        </section>
-      )}
     </div>
   );
 }

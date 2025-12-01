@@ -2,6 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { ForbiddenError, UnauthorizedError, requireTenantSession } from '@/lib/auth';
 
+export async function POST(req: NextRequest) {
+  let tenantId: string;
+  try {
+    const body = (await req.json().catch(() => ({}))) as { tenant_id?: string | null };
+    const session = await requireTenantSession(body.tenant_id);
+    tenantId = session.tenantId;
+  } catch (error) {
+    return handleAuthError(error);
+  }
+
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.REGULATION_SYNC_TOKEN) {
+    return NextResponse.json({ error: '未配置 regulation-sync 函数' }, { status: 500 });
+  }
+
+  const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/regulation-sync`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.REGULATION_SYNC_TOKEN}`,
+    },
+    body: JSON.stringify({ tenant_id: tenantId }),
+  });
+
+  if (!response.ok) {
+    return NextResponse.json({ error: await response.text() }, { status: response.status });
+  }
+
+  return NextResponse.json({ status: 'triggered' });
+}
+
 export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get('q')?.trim();
   const jurisdiction = req.nextUrl.searchParams.get('jurisdiction')?.trim();

@@ -3,7 +3,7 @@ import { createServerSupabase } from '@/lib/supabase-server';
 import { signOut } from '@/app/login/actions';
 
 export const NavUser = async () => {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data } = await supabase.auth.getUser();
   const user = data.user;
   if (!user) {

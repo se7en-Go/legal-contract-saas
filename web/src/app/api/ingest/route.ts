@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { ForbiddenError, UnauthorizedError, requireTenantSession } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -18,31 +19,31 @@ export async function POST(request: Request) {
     return handleAuthError(error);
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    return NextResponse.json({ error: 'Supabase 环境变量未配置' }, { status: 500 });
+  if (!serviceKey) {
+    return NextResponse.json({ error: '缺少 SUPABASE_SERVICE_ROLE_KEY 配置' }, { status: 500 });
   }
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/ingest-doc`, {
-    method: 'POST',
+  const { data, error } = await supabaseAdmin.functions.invoke('ingest-doc', {
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${serviceKey}`,
+      apikey: serviceKey,
     },
-    body: JSON.stringify({
+    body: {
       tenant_id: tenantId,
       storage_path,
       title,
       counterparty,
       metadata: { ...metadata, requested_by: userId },
-    }),
+    },
   });
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return NextResponse.json({ error: data?.error || data }, { status: response.status });
+  if (error) {
+    console.error('ingest-doc failed', error);
+    const formatted = normalizeFunctionError(error);
+    return NextResponse.json({ error: formatted.message }, { status: formatted.status });
   }
+
   return NextResponse.json(data);
 }
 
@@ -54,4 +55,37 @@ function handleAuthError(error: unknown) {
     return NextResponse.json({ error: error.message }, { status: 403 });
   }
   return NextResponse.json({ error: '未知错误' }, { status: 500 });
+}
+
+function normalizeFunctionError(error: unknown) {
+  const fallback = { status: 500, message: 'Edge Function 调用失败' };
+  if (!error || typeof error !== 'object') {
+    return fallback;
+  }
+
+  const context = (error as { context?: { response?: { status?: number; body?: unknown } } }).context;
+  const response = context?.response;
+  let message = (error as { message?: string }).message ?? fallback.message;
+  const status = response?.status ?? fallback.status;
+
+  if (response?.body) {
+    const body = response.body;
+    if (typeof body === 'string') {
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed?.error) {
+          message = parsed.error;
+        }
+      } catch {
+        message = body;
+      }
+    } else if (typeof body === 'object') {
+      const maybeMessage = (body as { error?: string }).error;
+      if (maybeMessage) {
+        message = maybeMessage;
+      }
+    }
+  }
+
+  return { status, message };
 }

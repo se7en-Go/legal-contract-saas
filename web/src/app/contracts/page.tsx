@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTenantSession } from '@/hooks/use-tenant-session';
 
 type Contract = {
@@ -10,14 +12,22 @@ type Contract = {
   counterparty: string | null;
   created_at: string;
   risk_count: number;
+  contract_type?: string | null;
 };
 
 export default function ContractsPage() {
   const { session, loading: sessionLoading, error: sessionError } = useTenantSession();
   const tenantId = session?.tenant_id ?? '';
+  const searchParams = useSearchParams();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [counterpartyFilter, setCounterpartyFilter] = useState('');
+  const [contractType, setContractType] = useState('all');
+  const [minRisk, setMinRisk] = useState(0);
+  const [focusedContract, setFocusedContract] = useState<string | null>(null);
 
   const fetchContracts = useCallback(async () => {
     if (!tenantId) {
@@ -27,7 +37,13 @@ export default function ContractsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/contracts?tenantId=${tenantId}`, { cache: 'no-store' });
+      const params = new URLSearchParams({ tenantId });
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (searchTerm) params.set('search', searchTerm);
+      if (counterpartyFilter) params.set('counterparty', counterpartyFilter);
+      if (contractType !== 'all') params.set('contractType', contractType);
+      if (minRisk > 0) params.set('minRisk', String(minRisk));
+      const res = await fetch(`/api/contracts?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '加载合同数据失败');
       setContracts(data.contracts);
@@ -36,13 +52,20 @@ export default function ContractsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, statusFilter, searchTerm, counterpartyFilter, contractType, minRisk]);
 
   useEffect(() => {
     if (tenantId) {
-      fetchContracts();
+      void fetchContracts();
     }
   }, [tenantId, fetchContracts]);
+
+  useEffect(() => {
+    const focusId = searchParams.get('focus');
+    if (focusId) {
+      setFocusedContract(focusId);
+    }
+  }, [searchParams]);
 
   const totalRisks = contracts.reduce((sum, contract) => sum + contract.risk_count, 0);
   const riskyContracts = contracts.filter((c) => c.risk_count > 0);
@@ -53,122 +76,217 @@ export default function ContractsPage() {
     }, {});
   }, [contracts]);
 
+  const counterparties = useMemo(() => {
+    const set = new Set(contracts.map((contract) => contract.counterparty).filter(Boolean) as string[]);
+    return Array.from(set);
+  }, [contracts]);
+
+  const contractTypes = useMemo(() => {
+    const set = new Set((contracts.map((contract) => contract.contract_type).filter(Boolean) as string[]));
+    return Array.from(set);
+  }, [contracts]);
+
   const summaryCards = [
-    { label: '合同总数', value: contracts.length.toString(), hint: '当前租户的合同记录' },
-    { label: '涉及风险', value: riskyContracts.length.toString(), hint: `累计风险项 ${totalRisks} 条` },
-    { label: '状态覆盖', value: Object.keys(statusGroups).length.toString(), hint: '处于不同阶段的合同' },
+    { label: '合同总数', value: contracts.length.toString(), hint: '当前租户存量' },
+    { label: '涉及风险', value: riskyContracts.length.toString(), hint: `累计风险 ${totalRisks} 条` },
+    { label: '状态覆盖', value: Object.keys(statusGroups).length.toString(), hint: '不同阶段的合同' },
   ];
 
   const formatDate = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false });
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-slate-200 bg-white/80 p-6 shadow-lg shadow-slate-200/40 backdrop-blur">
+    <div className="space-y-6 text-slate-100">
+      <div className="surface-card p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900">合同总览</h2>
-            <p className="text-sm text-slate-500">系统根据 tenant_id 自动加载对应合同，确认租户正确后即可查看 AI 审核最新结果。</p>
+            <h2 className="text-xl font-semibold text-white">合同总览</h2>
+            <p className="text-sm text-slate-300">系统根据 tenant_id 自动加载合同，确认租户正确后即可查看最新审核结果。</p>
           </div>
           <button
             onClick={fetchContracts}
-            className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+            className="rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 py-2 text-sm font-medium text-slate-950 shadow-lg shadow-cyan-500/40 disabled:opacity-50"
             disabled={loading || !tenantId}
           >
             {loading ? '刷新中…' : '刷新'}
           </button>
         </div>
+
         <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <p>当前用户</p>
-            <p className="text-base font-medium text-slate-900">{session?.email ?? '未登录'}</p>
+          <div className="surface-panel px-4 py-3 text-sm">
+            <p className="text-slate-400">当前用户</p>
+            <p className="text-base font-medium text-white">{session?.email ?? '未登录'}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <p>Tenant ID</p>
-            <p className="text-base font-mono text-slate-900">{tenantId || (sessionLoading ? '拉取中…' : '尚未关联')}</p>
+          <div className="surface-panel px-4 py-3 text-sm">
+            <p className="text-slate-400">Tenant ID</p>
+            <p className="text-base font-mono text-white">{tenantId || (sessionLoading ? '拉取中…' : '尚未关联')}</p>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <p>合同统计</p>
-            <p className="text-base text-slate-900">{loading ? '加载中…' : `共 ${contracts.length} 份`}</p>
+          <div className="surface-panel px-4 py-3 text-sm">
+            <p className="text-slate-400">合同统计</p>
+            <p className="text-base text-white">{loading ? '加载中…' : `共 ${contracts.length} 份`}</p>
           </div>
         </div>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        {sessionError && <p className="mt-2 text-sm text-red-600">{sessionError}</p>}
+
+        {error && <p className="mt-3 text-sm text-amber-300">{error}</p>}
+        {sessionError && <p className="mt-2 text-sm text-red-400">{sessionError}</p>}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         {summaryCards.map((item) => (
-          <div key={item.label} className="rounded-2xl border border-white/30 bg-slate-900/90 p-4 text-white shadow">
-            <p className="text-sm text-slate-300">{item.label}</p>
-            <p className="mt-2 text-3xl font-semibold">{item.value}</p>
-            <p className="text-xs text-slate-400">{item.hint}</p>
+          <div key={item.label} className="surface-panel p-4">
+            <p className="text-sm text-slate-400">{item.label}</p>
+            <p className="mt-2 text-3xl font-semibold text-white">{item.value}</p>
+            <p className="text-xs text-slate-500">{item.hint}</p>
           </div>
         ))}
       </div>
 
+      <div className="surface-card flex flex-wrap gap-3 p-4 text-sm text-slate-200">
+        <input
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="搜索合同标题 / 对手方"
+          className="min-w-[180px] flex-1 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2"
+        >
+          <option value="all">全部状态</option>
+          {Object.keys(statusGroups).map((status) => (
+            <option key={status} value={status}>
+              {status}
+            </option>
+          ))}
+        </select>
+        <select
+          value={counterpartyFilter}
+          onChange={(event) => setCounterpartyFilter(event.target.value)}
+          className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2"
+        >
+          <option value="">全部对手方</option>
+          {counterparties.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={contractType}
+          onChange={(event) => setContractType(event.target.value)}
+          className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2"
+        >
+          <option value="all">全部类型</option>
+          {contractTypes.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2">
+          <span className="text-xs text-slate-400">最低风险</span>
+          <input
+            type="number"
+            min={0}
+            value={minRisk}
+            onChange={(event) => setMinRisk(Number(event.target.value) || 0)}
+            className="w-16 bg-transparent text-right text-sm text-white focus:outline-none"
+          />
+        </label>
+        <button
+          onClick={() => {
+            setSearchTerm('');
+            setStatusFilter('all');
+            setCounterpartyFilter('');
+            setContractType('all');
+            setMinRisk(0);
+          }}
+          className="rounded-2xl border border-white/10 px-3 py-2 text-xs text-slate-300 hover:border-cyan-400/60 hover:text-cyan-200"
+        >
+          重置筛选
+        </button>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[3fr,2fr]">
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/90 shadow-lg shadow-slate-200/50">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+        <div className="surface-card p-0">
+          <table className="surface-table min-w-full divide-y divide-white/5 text-sm">
+            <thead>
               <tr>
                 <th className="px-4 py-3">合同标题</th>
                 <th className="px-4 py-3">对手方</th>
                 <th className="px-4 py-3">当前状态</th>
                 <th className="px-4 py-3">风险条目</th>
                 <th className="px-4 py-3">创建时间</th>
+                <th className="px-4 py-3">操作</th>
               </tr>
             </thead>
-              <tbody className="divide-y divide-slate-50 bg-white">
-                {contracts.map((contract) => (
-                  <tr key={contract.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">{contract.title}</td>
-                    <td className="px-4 py-3 text-slate-600">{contract.counterparty ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full border border-slate-200 px-2 py-0.5 text-xs capitalize text-slate-700">
-                        {contract.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-blue-600">{contract.risk_count}</td>
-                    <td className="px-4 py-3 text-slate-500">{formatDate(contract.created_at)}</td>
-                  </tr>
-                ))}
-                {!contracts.length && (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-slate-500" colSpan={5}>
-                      暂无数据，请确认 tenant_id 是否正确并点击刷新。
-                    </td>
-                  </tr>
-                )}
+            <tbody className="divide-y divide-white/5">
+              {contracts.map((contract) => (
+                <tr key={contract.id} className={focusedContract === contract.id ? 'bg-cyan-500/5' : undefined}>
+                  <td className="px-4 py-3 font-medium text-white">
+                    {contract.title}
+                    {contract.contract_type && (
+                      <p className="text-xs text-slate-400">类型：{contract.contract_type}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-300">{contract.counterparty ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <span className="surface-chip px-2 py-0.5 text-xs capitalize">{contract.status}</span>
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-cyan-300">{contract.risk_count}</td>
+                  <td className="px-4 py-3 text-slate-400">{formatDate(contract.created_at)}</td>
+                  <td className="px-4 py-3 text-xs">
+                    <Link
+                      href={`/reports?contractId=${contract.id}&title=${encodeURIComponent(contract.title)}`}
+                      className="text-cyan-300 hover:underline"
+                    >
+                      查看报告
+                    </Link>
+                    <span className="mx-1 text-slate-500">|</span>
+                    <Link href={`/risks?contractId=${contract.id}`} className="text-cyan-300 hover:underline">
+                      跳转风险
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+              {!contracts.length && (
+                <tr>
+                  <td className="px-4 py-6 text-center text-slate-400" colSpan={5}>
+                    暂无数据，请确认租户信息后点击刷新。
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-2xl border border-white/10 bg-slate-900/90 p-5 text-white shadow-lg">
-            <h3 className="text-lg font-semibold">高风险合同</h3>
+          <div className="surface-card p-5">
+            <h3 className="text-lg font-semibold text-white">高风险合同</h3>
             <p className="text-sm text-slate-300">列出风险条目大于 0 的合同，方便立即跟进。</p>
             <div className="mt-4 space-y-3 text-sm">
               {riskyContracts.slice(0, 5).map((contract) => (
-                <div key={contract.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                  <p className="font-medium">{contract.title}</p>
-                  <p className="text-xs text-slate-300">
+                <div key={contract.id} className="surface-panel bg-transparent px-3 py-2">
+                  <p className="font-medium text-white">{contract.title}</p>
+                  <p className="text-xs text-slate-400">
                     风险条目：{contract.risk_count} · 创建时间：{formatDate(contract.created_at)}
                   </p>
                 </div>
               ))}
-              {!riskyContracts.length && <p className="text-slate-300">目前没有高风险合同</p>}
+              {!riskyContracts.length && <p className="text-slate-400">目前没有高风险合同。</p>}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-lg">
-            <h3 className="text-lg font-semibold text-slate-900">状态分布</h3>
-            <ul className="mt-3 space-y-2 text-sm text-slate-600">
+          <div className="surface-card p-5">
+            <h3 className="text-lg font-semibold text-white">状态分布</h3>
+            <ul className="mt-3 space-y-2 text-sm text-slate-300">
               {Object.entries(statusGroups).map(([status, count]) => (
-                <li key={status} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                  <span className="capitalize">{status}</span>
-                  <span className="font-semibold text-slate-900">{count}</span>
+                <li key={status} className="surface-panel flex items-center justify-between px-3 py-2">
+                  <span className="capitalize text-white">{status}</span>
+                  <span className="font-semibold text-cyan-200">{count}</span>
                 </li>
               ))}
-              {!contracts.length && <li className="text-slate-400">暂无任何状态统计</li>}
+              {!contracts.length && <li className="text-slate-400">暂无合同状态统计。</li>}
             </ul>
           </div>
         </div>

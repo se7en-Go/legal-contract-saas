@@ -3,9 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { ForbiddenError, UnauthorizedError, requireTenantSession } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
-  const status = req.nextUrl.searchParams.get('status') ?? undefined;
-  const taskId = req.nextUrl.searchParams.get('taskId') ?? undefined;
-  const limitParam = Number(req.nextUrl.searchParams.get('limit') ?? 200);
+  const search = req.nextUrl.searchParams.get('search') ?? undefined;
+  const contractId = req.nextUrl.searchParams.get('contractId') ?? undefined;
+  const versionId = req.nextUrl.searchParams.get('versionId') ?? undefined;
+
   let tenantId: string;
   try {
     const session = await requireTenantSession();
@@ -15,25 +16,35 @@ export async function GET(req: NextRequest) {
   }
 
   const query = supabaseAdmin
-    .from('tasks')
-    .select('id, task_type, status, progress, error, last_error, retry_count, payload, created_at, updated_at')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false });
+    .from('clauses')
+    .select(
+      `
+      id,clause_no,title,body,created_at,
+      contract_version:contract_versions!inner(
+        id,version_no,
+        contract:contracts!inner(id,title,counterparty,tenant_id)
+      )
+    `
+    )
+    .eq('contract_versions.contracts.tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(200);
 
-  if (taskId) {
-    query.eq('id', taskId);
-  } else {
-    query.limit(Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 500)) : 200);
-    if (status && status !== 'all') {
-      query.eq('status', status);
-    }
+  if (search) {
+    query.or(`title.ilike.%${search}%,body.ilike.%${search}%`);
+  }
+  if (contractId) {
+    query.eq('contract_versions.contract_id', contractId);
+  }
+  if (versionId) {
+    query.eq('contract_version_id', versionId);
   }
 
   const { data, error } = await query;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ tasks: data ?? [] });
+  return NextResponse.json({ clauses: data ?? [] });
 }
 
 function handleAuthError(error: unknown) {

@@ -1,39 +1,43 @@
 import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 
-type CookieOptions = {
-  path?: string;
-  domain?: string;
-  sameSite?: 'strict' | 'lax' | 'none';
-  secure?: boolean;
-  httpOnly?: boolean;
-  expires?: Date;
-  maxAge?: number;
+type ServerSupabaseOptions = {
+  canWriteCookies?: boolean;
 };
 
-export const createServerSupabase = () => {
-  const cookieStore = cookies();
+export const createServerSupabase = async ({ canWriteCookies = false }: ServerSupabaseOptions = {}) => {
+  const cookieStore = await cookies();
 
-  return createClient(
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      auth: {
-        detectSessionInUrl: false,
-        persistSession: false,
-      },
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options?: CookieOptions) {
-          cookieStore.set({
-            name,
-            value,
-            ...(options ?? {}),
+        getAll: async () => cookieStore.getAll(),
+        setAll: async (cookiesToSet) => {
+          if (!canWriteCookies) {
+            return;
+          }
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set({
+              name,
+              value,
+              ...normalizeCookieOptions(options),
+            });
           });
         },
       },
     }
   );
 };
+
+function normalizeCookieOptions(options?: CookieOptions): CookieOptions {
+  if (!options) {
+    return {};
+  }
+  const normalized: CookieOptions = { ...options };
+  if (options.expires && typeof options.expires === 'string') {
+    normalized.expires = new Date(options.expires);
+  }
+  return normalized;
+}

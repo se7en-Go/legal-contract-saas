@@ -45,9 +45,9 @@ export default function HomePage() {
         </div>
         <div className="mt-10 grid gap-4 sm:grid-cols-3">
           {stats.map((stat) => (
-            <div key={stat.label} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white">
+            <div key={stat.label} className="surface-panel p-4 text-white">
               <p className="text-sm text-slate-200">{stat.label}</p>
-              <p className="mt-2 text-3xl font-semibold">{stat.value}</p>
+              <p className="mt-2 text-3xl font-semibold text-white">{stat.value}</p>
               <p className="text-xs text-slate-300">{stat.sub}</p>
             </div>
           ))}
@@ -56,9 +56,9 @@ export default function HomePage() {
 
       <section className="grid gap-6 md:grid-cols-3">
         {pillars.map((pillar) => (
-          <div key={pillar.title} className="rounded-2xl border border-white/10 bg-white/90 p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">{pillar.title}</h3>
-            <p className="mt-3 text-sm text-slate-600">{pillar.desc}</p>
+          <div key={pillar.title} className="surface-card p-6 text-slate-100">
+            <h3 className="text-lg font-semibold text-white">{pillar.title}</h3>
+            <p className="mt-3 text-sm text-slate-300">{pillar.desc}</p>
           </div>
         ))}
       </section>

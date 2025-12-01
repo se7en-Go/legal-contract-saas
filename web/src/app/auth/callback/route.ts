@@ -1,17 +1,21 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { NextRequest, NextResponse } from 'next/server';
+import { createServerSupabase } from '@/lib/supabase-server';
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
+  const redirectUrl = new URL('/', request.url);
+
   if (code) {
-    const supabase = createServerClient({
-      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      cookies,
-    });
-    await supabase.auth.exchangeCodeForSession(code);
+    const supabase = await createServerSupabase({ canWriteCookies: true });
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      console.error('Supabase exchangeCodeForSession error:', error);
+      redirectUrl.pathname = '/login';
+      redirectUrl.searchParams.set('error', '登录链接已失效或已被使用，请重新请求。');
+      return NextResponse.redirect(redirectUrl);
+    }
   }
-  return NextResponse.redirect(new URL('/', request.url));
+
+  return NextResponse.redirect(redirectUrl);
 }

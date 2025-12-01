@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { ForbiddenError, UnauthorizedError, requireTenantSession } from '@/lib/auth';
 
-export async function GET(req: NextRequest) {
-  const status = req.nextUrl.searchParams.get('status') ?? undefined;
-  const taskId = req.nextUrl.searchParams.get('taskId') ?? undefined;
-  const limitParam = Number(req.nextUrl.searchParams.get('limit') ?? 200);
+export async function GET(_: NextRequest, context: { params: { taskId: string } | Promise<{ taskId: string }> }) {
   let tenantId: string;
   try {
     const session = await requireTenantSession();
@@ -14,26 +11,32 @@ export async function GET(req: NextRequest) {
     return handleAuthError(error);
   }
 
-  const query = supabaseAdmin
-    .from('tasks')
-    .select('id, task_type, status, progress, error, last_error, retry_count, payload, created_at, updated_at')
-    .eq('tenant_id', tenantId)
-    .order('created_at', { ascending: false });
-
-  if (taskId) {
-    query.eq('id', taskId);
-  } else {
-    query.limit(Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 500)) : 200);
-    if (status && status !== 'all') {
-      query.eq('status', status);
-    }
+  const params = 'then' in context.params ? await context.params : context.params;
+  const { taskId } = params;
+  if (!taskId) {
+    return NextResponse.json({ error: 'taskId 缺失' }, { status: 400 });
   }
 
-  const { data, error } = await query;
+  const { data, error } = await supabaseAdmin
+    .from('task_attempts')
+    .select('id, attempt_no, status, message, created_at, tasks!inner(tenant_id)')
+    .eq('task_id', taskId)
+    .eq('tasks.tenant_id', tenantId)
+    .order('created_at', { ascending: false });
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ tasks: data ?? [] });
+
+  const attempts = (data ?? []).map((row) => ({
+    id: row.id,
+    attempt_no: row.attempt_no,
+    status: row.status,
+    message: row.message,
+    created_at: row.created_at,
+  }));
+
+  return NextResponse.json({ attempts });
 }
 
 function handleAuthError(error: unknown) {

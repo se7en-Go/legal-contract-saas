@@ -22,3 +22,41 @@ body {
   background: rgba(56, 189, 248, 0.35);
   color: #020617;
 }
+
+.surface-card {
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(2, 6, 23, 0.85);
+  color: #e2e8f0;
+  box-shadow: 0 25px 70px rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(18px);
+}
+
+.surface-panel {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(15, 23, 42, 0.78);
+  color: #e2e8f0;
+  box-shadow: 0 20px 50px rgba(2, 6, 23, 0.4);
+}
+
+.surface-chip {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+.surface-table {
+  background: transparent;
+  color: #cbd5f5;
+}
+
+.surface-table thead {
+  background: rgba(15, 23, 42, 0.8);
+  color: #94a3b8;
+}
+
+.surface-table tbody tr {
+  border-color: rgba(255, 255, 255, 0.05);
+}

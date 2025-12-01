@@ -1,228 +1,392 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTenantSession } from '@/hooks/use-tenant-session';
 
 type RiskFinding = {
   id: string;
+  clause_id: string;
+  contract_id: string;
+  contract_title: string;
+  contract_counterparty: string | null;
+  contract_version_id: string;
+  contract_version_no: number | null;
+  clause_title: string | null;
   risk_level: string;
-  risk_type: string | null;
-  description: string | null;
+  summary: string | null;
   recommendation: string | null;
-  regulation_refs: unknown;
+  resolution_status: string;
   created_at: string;
-  clause: {
-    id: string;
-    clause_no: string | null;
-    title: string | null;
-    contract_version: {
-      version_no: number;
-      contract: {
-        title: string;
-        counterparty: string | null;
-      };
-    };
-  } | null;
 };
 
-const severityColor: Record<string, string> = {
-  high: 'bg-red-500/20 text-red-200 border-red-400/40',
-  medium: 'bg-amber-500/20 text-amber-200 border-amber-400/40',
-  low: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40',
+type RiskStats = {
+  total: number;
+  high: number;
+  medium: number;
+  low: number;
 };
 
-const normalizeRegulationRefs = (value: unknown): string[] => {
-  const toLabel = (item: unknown) => {
-    if (typeof item === 'string') return item;
-    if (item && typeof item === 'object') return JSON.stringify(item);
-    return '';
-  };
-  if (Array.isArray(value)) {
-    return value.map(toLabel).filter(Boolean);
-  }
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      if (Array.isArray(parsed)) {
-        return parsed.map(toLabel).filter(Boolean);
-      }
-    } catch {
-      return [value];
-    }
-    return [value];
-  }
-  if (value && typeof value === 'object') {
-    return [JSON.stringify(value)];
-  }
-  return [];
+type RiskLevelFilter = 'all' | 'high' | 'medium' | 'low';
+
+const LEVEL_FILTER_VALUES: RiskLevelFilter[] = ['all', 'high', 'medium', 'low'];
+
+const LEVEL_FILTER_LABELS: Record<RiskLevelFilter, string> = {
+  all: '全部',
+  high: '高风险',
+  medium: '中风险',
+  low: '低风险',
+};
+
+const LEVEL_LABELS: Record<string, string> = {
+  high: '高风险',
+  medium: '中风险',
+  low: '低风险',
+};
+
+const LEVEL_CHIP_STYLES: Record<string, string> = {
+  high: 'surface-chip border-rose-300/60 text-rose-200',
+  medium: 'surface-chip border-amber-300/60 text-amber-200',
+  low: 'surface-chip border-emerald-300/60 text-emerald-200',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  open: '待处置',
+  resolved: '已处置',
 };
 
 export default function RisksPage() {
   const { session, loading: sessionLoading, error: sessionError } = useTenantSession();
+  const searchParams = useSearchParams();
   const [risks, setRisks] = useState<RiskFinding[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [levelFilter, setLevelFilter] = useState<string>('all');
-  const [search, setSearch] = useState('');
+  const [level, setLevel] = useState<RiskLevelFilter>('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [contractFilter, setContractFilter] = useState(searchParams.get('contractId') ?? '');
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const [total, setTotal] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [rerunId, setRerunId] = useState<string | null>(null);
+  const [stats, setStats] = useState<RiskStats>({ total: 0, high: 0, medium: 0, low: 0 });
+  const levelCounts: Record<RiskLevelFilter, number> = {
+    all: stats.total,
+    high: stats.high,
+    medium: stats.medium,
+    low: stats.low,
+  };
+
+  const fetchRisks = useCallback(async () => {
+    if (!session?.tenant_id) {
+      setError('尚未登录或缺少 tenant_id');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const url = new URL('/api/risk-findings', window.location.origin);
+      if (level !== 'all') url.searchParams.set('level', level);
+      if (statusFilter !== 'all') url.searchParams.set('status', statusFilter);
+      if (contractFilter) url.searchParams.set('contractId', contractFilter);
+      if (searchTerm) url.searchParams.set('search', searchTerm);
+      url.searchParams.set('page', String(page));
+      url.searchParams.set('pageSize', String(pageSize));
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || '获取风险列表失败');
+      setRisks(data.risks ?? []);
+      setTotal(data.total ?? 0);
+      const apiStats = data.stats ?? {};
+      setStats({
+        total: apiStats.total ?? data.total ?? data.risks?.length ?? 0,
+        high: apiStats.high ?? 0,
+        medium: apiStats.medium ?? 0,
+        low: apiStats.low ?? 0,
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.tenant_id, level, statusFilter, contractFilter, searchTerm, page]);
 
   useEffect(() => {
-    if (!session?.tenant_id) return;
-    const controller = new AbortController();
-    const fetchRisks = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const url = new URL('/api/risk-findings', window.location.origin);
-        if (search) url.searchParams.set('search', search);
-        const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || '获取风险列表失败');
-        setRisks(data.risks ?? []);
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    };
     void fetchRisks();
-    return () => controller.abort();
-  }, [session?.tenant_id, search]);
+  }, [fetchRisks]);
 
-  const filteredRisks = useMemo(() => {
-    if (levelFilter === 'all') return risks;
-    return risks.filter((risk) => risk.risk_level?.toLowerCase() === levelFilter);
-  }, [risks, levelFilter]);
+  useEffect(() => {
+    setPage(1);
+  }, [level, statusFilter, searchTerm, contractFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const allSelected = risks.length > 0 && risks.every((risk) => selectedIds.includes(risk.id));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !risks.some((risk) => risk.id === id)));
+    } else {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...risks.map((risk) => risk.id)])));
+    }
+  };
+
+  const handleBulkUpdate = async (status: 'resolved' | 'open') => {
+    if (!selectedIds.length) return;
+    setBulkLoading(true);
+    try {
+      const res = await fetch('/api/risk-findings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || '批量更新失败');
+      setSelectedIds([]);
+      await fetchRisks();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleExport = () => {
+    setExporting(true);
+    try {
+      const header = '合同,条款,风险等级,状态,建议\n';
+      const rows = risks
+        .map((risk) =>
+          [
+            risk.contract_title,
+            risk.clause_title ?? '未命名条款',
+            LEVEL_LABELS[risk.risk_level] ?? risk.risk_level,
+            STATUS_LABELS[risk.resolution_status] ?? risk.resolution_status,
+            (risk.recommendation ?? '').replace(/\r?\n/g, ' '),
+          ].join(',')
+        )
+        .join('\n');
+      const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `risk-findings-page-${page}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleManualRerun = async (risk: RiskFinding) => {
+    setRerunId(risk.id);
+    try {
+      const res = await fetch('/api/risk-findings/rerun', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractVersionId: risk.contract_version_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || '触发重跑失败');
+      await fetchRisks();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setRerunId(null);
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-3xl border border-white/10 bg-white/90 p-6 shadow-xl">
+    <div className="space-y-6 text-slate-100">
+      <div className="surface-card p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm uppercase tracking-[0.4em] text-slate-400">Risk Analyzer</p>
-            <h1 className="text-2xl font-semibold text-slate-900">风险洞察</h1>
-            <p className="text-sm text-slate-500">查看 LLM 风险分析结果、监管引用与 AI 建议，支持关键词搜索与风险等级筛选。</p>
+            <p className="text-xs tracking-[0.35em] text-slate-400">风险识别引擎</p>
+            <h1 className="text-2xl font-semibold text-white">风险监控面板</h1>
+            <p className="text-sm text-slate-400">聚合 LLM 风险识别结果，支持按等级筛选并查看整改建议。</p>
           </div>
-          <div className="flex gap-3">
-            {['all', 'high', 'medium', 'low'].map((level) => (
+          <div className="flex flex-wrap gap-2 text-sm">
+            {LEVEL_FILTER_VALUES.map((item) => (
               <button
-                key={level}
-                onClick={() => setLevelFilter(level)}
-                className={`rounded-full border px-4 py-1 text-sm capitalize ${
-                  levelFilter === level ? 'border-cyan-500 text-cyan-700 bg-cyan-100' : 'border-slate-200 text-slate-600'
+                key={item}
+                onClick={() => setLevel(item)}
+                className={`surface-chip px-4 py-1 text-xs ${
+                  level === item ? 'border-rose-200/70 text-rose-100' : 'text-slate-300'
                 }`}
               >
-                {level === 'all' ? '全部' : level}
+                {`${LEVEL_FILTER_LABELS[item]}（${levelCounts[item]}）`}
               </button>
             ))}
           </div>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="输入关键词，如 违约责任 / ESG / 法规名称"
-            className="flex-1 rounded-2xl border border-slate-200 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-            当前用户：{session?.email ?? (sessionLoading ? '获取中…' : '未登录')}
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="搜索摘要 / 建议关键词"
+              className="min-w-[180px] flex-1 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+            />
+            <input
+              value={contractFilter}
+              onChange={(event) => setContractFilter(event.target.value)}
+              placeholder="按合同 ID 过滤"
+              className="w-48 rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+            />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-2xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm"
+            >
+              <option value="all">全部状态</option>
+              <option value="open">待处置</option>
+              <option value="resolved">已处置</option>
+            </select>
+            <button
+              onClick={() => handleBulkUpdate('resolved')}
+              disabled={!selectedIds.length || bulkLoading}
+              className="rounded-2xl border border-emerald-400/60 px-3 py-2 text-xs text-emerald-200 disabled:opacity-40"
+            >
+              标记已处置
+            </button>
+            <button
+              onClick={() => handleBulkUpdate('open')}
+              disabled={!selectedIds.length || bulkLoading}
+              className="rounded-2xl border border-amber-400/60 px-3 py-2 text-xs text-amber-200 disabled:opacity-40"
+            >
+              重新打开
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="rounded-2xl border border-cyan-400/60 px-3 py-2 text-xs text-cyan-200 disabled:opacity-40"
+            >
+              导出表格
+            </button>
+            <span className="text-xs text-slate-400">已选 {selectedIds.length} 条</span>
           </div>
         </div>
-        {sessionError && <p className="mt-3 text-sm text-red-600">{sessionError}</p>}
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        <div className="mt-3 text-xs text-slate-400">
+          {sessionLoading ? '获取用户信息…' : session ? `当前用户：${session.email}` : sessionError || '未登录'}
+        </div>
+        {error && <p className="mt-2 text-sm text-amber-300">{error}</p>}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-xl">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">风险说明</th>
-                <th className="px-4 py-3">等级</th>
-                <th className="px-4 py-3">所属合同</th>
-                <th className="px-4 py-3">AI 建议</th>
-                <th className="px-4 py-3">发现时间</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {filteredRisks.map((risk) => {
-                const refs = normalizeRegulationRefs(risk.regulation_refs);
-                return (
-                  <Fragment key={risk.id}>
-                    <tr>
-                      <td className="px-4 py-3">
-                        <span className="font-semibold text-slate-900">{risk.risk_type || '未命名风险'}</span>
-                        <p className="text-xs text-slate-500">{risk.description ?? '暂无描述'}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs capitalize ${severityColor[risk.risk_level?.toLowerCase() ?? 'low'] ?? 'border-slate-200 bg-slate-100 text-slate-700'}`}
-                        >
-                          {risk.risk_level}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        <p>{risk.clause?.contract_version.contract.title ?? '未知合同'}</p>
-                        <p className="text-xs text-slate-400">{risk.clause?.contract_version.contract.counterparty ?? '未填写对手方'}</p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">{risk.recommendation ?? '暂无建议'}</td>
-                      <td className="px-4 py-3 text-slate-500">{formatDate(risk.created_at)}</td>
-                    </tr>
-                    {refs.length > 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-4 pb-4 text-xs text-slate-500">
-                          <div className="flex flex-wrap gap-2">
-                            {refs.map((ref) => (
-                              <span key={ref} className="rounded-full border border-slate-200 px-2 py-0.5">
-                                {ref}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-              {!filteredRisks.length && (
-                <tr>
-                  <td className="px-4 py-6 text-center text-slate-500" colSpan={5}>
-                    {loading ? '加载中…' : '暂无风险分析结果，上传合同并完成解析后可查看。'}
+      <div className="grid gap-4 md:grid-cols-4">
+        <div className="surface-panel p-4">
+          <p className="text-sm text-slate-400">风险总览（不分页）</p>
+          <p className="mt-2 text-3xl font-semibold text-white">{stats.total}</p>
+        </div>
+        <div className="surface-panel p-4">
+          <p className="text-sm text-slate-400">高风险</p>
+          <p className="mt-2 text-3xl font-semibold text-rose-200">{stats.high}</p>
+        </div>
+        <div className="surface-panel p-4">
+          <p className="text-sm text-slate-400">中风险</p>
+          <p className="mt-2 text-3xl font-semibold text-amber-200">{stats.medium}</p>
+        </div>
+        <div className="surface-panel p-4">
+          <p className="text-sm text-slate-400">低风险</p>
+          <p className="mt-2 text-3xl font-semibold text-emerald-200">{stats.low}</p>
+        </div>
+      </div>
+
+      <div className="surface-card p-0">
+        <table className="surface-table min-w-full divide-y divide-white/5 text-sm">
+          <thead>
+            <tr>
+              <th className="px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-white/20 bg-slate-900"
+                />
+              </th>
+              <th className="px-4 py-3">合同 / 条款</th>
+              <th className="px-4 py-3">风险等级</th>
+              <th className="px-4 py-3">摘要</th>
+              <th className="px-4 py-3">建议</th>
+              <th className="px-4 py-3">创建时间</th>
+              <th className="px-4 py-3">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {risks.map((risk) => {
+              const isSelected = selectedIds.includes(risk.id);
+              return (
+                <tr key={risk.id} className={risk.resolution_status === 'resolved' ? 'bg-emerald-500/5' : undefined}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelect(risk.id)}
+                      className="h-4 w-4 rounded border-white/20 bg-slate-900"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-white">{risk.contract_title}</p>
+                    <p className="text-xs text-slate-400">{risk.clause_title ?? '未命名条款'}</p>
+                    <p className="text-xs text-slate-500">
+                      版本 {risk.contract_version_no ?? '-'} · 对手方：{risk.contract_counterparty ?? '—'}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`${LEVEL_CHIP_STYLES[risk.risk_level] ?? 'surface-chip'} px-3 py-1 text-xs`}>
+                      {LEVEL_LABELS[risk.risk_level] ?? risk.risk_level}
+                    </span>
+                    <span className="ml-2 text-xs text-slate-400">
+                      {STATUS_LABELS[risk.resolution_status] ?? '待处置'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-300">{risk.summary ?? '暂无摘要'}</td>
+                  <td className="px-4 py-3 text-slate-300">{risk.recommendation ?? '暂无建议'}</td>
+                  <td className="px-4 py-3 text-slate-400">{new Date(risk.created_at).toLocaleString('zh-CN', { hour12: false })}</td>
+                  <td className="px-4 py-3 text-xs text-cyan-300">
+                    <button
+                      className="hover:underline disabled:opacity-40"
+                      disabled={rerunId === risk.id}
+                      onClick={() => void handleManualRerun(risk)}
+                    >
+                      {rerunId === risk.id ? '重跑中…' : '手动重跑'}
+                    </button>
                   </td>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="space-y-6">
-          <div className="rounded-3xl border border-white/10 bg-slate-950/90 p-6 text-white shadow-lg">
-            <h3 className="text-lg font-semibold">高风险摘要</h3>
-            <p className="text-sm text-slate-300">快速了解最需要关注的风险与建议。</p>
-            <div className="mt-4 space-y-4 text-sm">
-              {risks
-                .filter((risk) => risk.risk_level?.toLowerCase() === 'high')
-                .slice(0, 4)
-                .map((risk) => (
-                  <div key={risk.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <p className="font-semibold">{risk.risk_type ?? '风险'}</p>
-                    <p className="text-xs text-slate-300">{risk.description ?? '暂无描述'}</p>
-                    {risk.recommendation && <p className="text-xs text-emerald-300">建议：{risk.recommendation}</p>}
-                  </div>
-                ))}
-              {!risks.filter((risk) => risk.risk_level?.toLowerCase() === 'high').length && <p className="text-slate-400">暂无高风险记录</p>}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-lg">
-            <h3 className="text-lg font-semibold text-slate-900">统计概览</h3>
-            <ul className="mt-4 space-y-2 text-sm text-slate-600">
-              <li>High 等级：{risks.filter((r) => r.risk_level?.toLowerCase() === 'high').length} 条</li>
-              <li>Medium 等级：{risks.filter((r) => r.risk_level?.toLowerCase() === 'medium').length} 条</li>
-              <li>Low 等级：{risks.filter((r) => r.risk_level?.toLowerCase() === 'low').length} 条</li>
-              <li>涉及合同：{new Set(risks.map((r) => r.clause?.contract_version.contract.title).filter(Boolean)).size} 份</li>
-            </ul>
-          </div>
+              );
+            })}
+            {!risks.length && (
+              <tr>
+                <td className="px-4 py-6 text-center text-slate-400" colSpan={7}>
+                  {loading ? '加载风险中…' : '暂无风险记录。'}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex items-center justify-between text-xs text-slate-400">
+        <p>
+          第 {page} / {totalPages} 页 · 当前筛选 {total} 条
+        </p>
+        <div className="flex gap-2">
+          <button
+            className="surface-chip px-3 py-1 disabled:opacity-40"
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            disabled={page === 1}
+          >
+            上一页
+          </button>
+          <button
+            className="surface-chip px-3 py-1 disabled:opacity-40"
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={page === totalPages}
+          >
+            下一页
+          </button>
         </div>
       </div>
     </div>

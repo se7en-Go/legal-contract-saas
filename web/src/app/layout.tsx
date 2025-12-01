@@ -5,6 +5,9 @@ import './globals.css';
 import { NavUser } from '@/components/nav-user';
 import { AuthHashHandler } from '@/components/auth-hash-handler';
 
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 const sans = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-sans' });
 const serif = Playfair_Display({ subsets: ['latin'], weight: ['600'], variable: '--font-serif' });
 
@@ -52,7 +55,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   </Link>
                 </nav>
               </div>
-              {/* @ts-expect-error Async Server Component */}
               <NavUser />
             </div>
           </header>

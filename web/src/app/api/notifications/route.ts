@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase-server';
 
 export async function GET(req: NextRequest) {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data } = await supabase.auth.getUser();
   if (!data.user) {
     return NextResponse.json({ error: '未登录或会话失效' }, { status: 401 });
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const supabase = createServerSupabase();
+  const supabase = await createServerSupabase();
   const { data } = await supabase.auth.getUser();
   if (!data.user) {
     return NextResponse.json({ error: '未登录或会话失效' }, { status: 401 });
