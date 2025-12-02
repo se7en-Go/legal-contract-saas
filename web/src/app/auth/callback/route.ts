@@ -5,7 +5,10 @@ export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
   const next = requestUrl.searchParams.get('next') || '/';
-  const redirectUrl = new URL(next, request.url);
+
+  // 修复：使用绝对URL构建重定向目标
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/[\n\r]/g, '') || requestUrl.origin;
+  const redirectUrl = new URL(next, baseUrl);
 
   // 添加详细的调试信息（仅开发环境）
   if (process.env.NODE_ENV !== 'production') {
@@ -32,17 +35,32 @@ export async function GET(request: NextRequest) {
           console.error('❌ Supabase exchangeCodeForSession error:', {
             message: error.message,
             status: error.status,
-            code: error.code
+            code: error.code,
+            codeProvided: !!code,
+            codeLength: code?.length || 0
           });
         }
 
         // 根据错误类型提供更具体的错误信息
         let errorMessage = '登录链接已失效或已被使用，请重新请求。';
+
         if (error.message.includes('Invalid refresh token')) {
           errorMessage = '登录令牌无效，请重新获取登录链接。';
         } else if (error.message.includes('expired')) {
           errorMessage = '登录链接已过期，请重新获取登录链接。';
+        } else if (error.message.includes('Invalid code')) {
+          errorMessage = '登录链接无效，请重新获取登录链接。';
+        } else if (error.message.includes('401') || error.status === 401) {
+          errorMessage = '认证失败，请检查链接是否正确。';
+        } else if (error.message.includes('unauthorized_client')) {
+          errorMessage = '客户端认证失败，请联系技术支持。';
         }
+
+        console.error('💡 Detailed error info:', {
+          errorMessage,
+          originalError: error.message,
+          errorCode: error.status
+        });
 
         redirectUrl.pathname = '/login';
         redirectUrl.searchParams.set('error', errorMessage);
