@@ -15,9 +15,17 @@ export const createBrowserSupabase = () => {
 
   const domain = getDomain();
 
+  // 清理环境变量中的换行符和空白字符
+  const cleanSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/[\n\r]/g, '');
+  const cleanSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/[\n\r]/g, '');
+
+  if (!cleanSupabaseUrl || !cleanSupabaseKey) {
+    throw new Error('Missing required Supabase environment variables');
+  }
+
   return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    cleanSupabaseUrl,
+    cleanSupabaseKey,
     {
       auth: {
         // 确保页面刷新后保持会话

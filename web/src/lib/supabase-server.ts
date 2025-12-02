@@ -16,7 +16,9 @@ export const createServerSupabase = async ({ canWriteCookies = false }: ServerSu
     // 服务端从环境变量获取
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
     try {
-      return new URL(siteUrl).hostname;
+      // 清理URL中的换行符和空白字符
+      const cleanUrl = siteUrl.trim().replace(/[\n\r]/g, '');
+      return new URL(cleanUrl).hostname;
     } catch {
       return 'localhost';
     }
@@ -25,9 +27,17 @@ export const createServerSupabase = async ({ canWriteCookies = false }: ServerSu
   const isProduction = process.env.NODE_ENV === 'production';
   const domain = getDomain();
 
+  // 清理环境变量中的换行符和空白字符
+  const cleanSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/[\n\r]/g, '');
+  const cleanSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/[\n\r]/g, '');
+
+  if (!cleanSupabaseUrl || !cleanSupabaseKey) {
+    throw new Error('Missing required Supabase environment variables');
+  }
+
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    cleanSupabaseUrl,
+    cleanSupabaseKey,
     {
       cookies: {
         getAll: async () => cookieStore.getAll(),

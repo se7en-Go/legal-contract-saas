@@ -22,8 +22,10 @@ export async function signIn(formData: FormData) {
     throw new Error('请输入有效的邮箱地址');
   }
   const supabase = await createServerSupabase({ canWriteCookies: true });
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ??
-                 (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+
+  // 清理并获取origin URL
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/[\n\r]/g, '');
+  const origin = siteUrl ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
   const params = new URLSearchParams();
   try {
     const { error } = await supabase.auth.signInWithOtp({
