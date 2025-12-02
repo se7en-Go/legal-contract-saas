@@ -5,11 +5,25 @@ import { createServerSupabase } from '@/lib/supabase-server';
 
 export async function signIn(formData: FormData) {
   const email = String(formData.get('email') ?? '').trim();
+
+  // 增强的输入验证
   if (!email) {
     throw new Error('请输入邮箱地址');
   }
+
+  // 邮箱长度限制
+  if (email.length > 254) {
+    throw new Error('邮箱地址过长');
+  }
+
+  // 基本的邮箱格式验证
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    throw new Error('请输入有效的邮箱地址');
+  }
   const supabase = await createServerSupabase({ canWriteCookies: true });
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  const origin = process.env.NEXT_PUBLIC_SITE_URL ??
+                 (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
   const params = new URLSearchParams();
   try {
     const { error } = await supabase.auth.signInWithOtp({

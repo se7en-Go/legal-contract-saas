@@ -7,29 +7,71 @@ export async function GET(request: NextRequest) {
   const next = requestUrl.searchParams.get('next') || '/';
   const redirectUrl = new URL(next, request.url);
 
+  // 添加详细的调试信息（仅开发环境）
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('🔍 Auth callback debug:');
+    console.log('  - Full URL:', requestUrl.toString());
+    console.log('  - Code:', code ? `${code.substring(0, 8)}...` : 'MISSING');
+    console.log('  - Next:', next);
+    console.log('  - Origin:', requestUrl.origin);
+    console.log('  - Environment:', process.env.NODE_ENV);
+    console.log('  - Site URL:', process.env.NEXT_PUBLIC_SITE_URL);
+  }
+
   if (code) {
     try {
       const supabase = await createServerSupabase({ canWriteCookies: true });
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('🔄 Attempting to exchange code for session...');
+      }
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (error) {
-        console.error('Supabase exchangeCodeForSession error:', error);
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('❌ Supabase exchangeCodeForSession error:', {
+            message: error.message,
+            status: error.status,
+            code: error.code
+          });
+        }
+
+        // 根据错误类型提供更具体的错误信息
+        let errorMessage = '登录链接已失效或已被使用，请重新请求。';
+        if (error.message.includes('Invalid refresh token')) {
+          errorMessage = '登录令牌无效，请重新获取登录链接。';
+        } else if (error.message.includes('expired')) {
+          errorMessage = '登录链接已过期，请重新获取登录链接。';
+        }
+
         redirectUrl.pathname = '/login';
-        redirectUrl.searchParams.set('error', '登录链接已失效或已被使用，请重新请求。');
+        redirectUrl.searchParams.set('error', errorMessage);
         return NextResponse.redirect(redirectUrl);
       }
 
-      // 成功登录，添加调试日志
-      console.log('✅ Auth callback successful, redirecting to:', redirectUrl.toString());
+      // 成功登录，添加调试日志（仅开发环境）
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ Auth callback successful!');
+        console.log('  - Session established:', !!data.session);
+        console.log('  - User ID:', data.session?.user?.id);
+        console.log('  - Email:', data.session?.user?.email);
+        console.log('  - Redirecting to:', redirectUrl.toString());
+      }
 
     } catch (err) {
-      console.error('Unexpected error in auth callback:', err);
+      console.error('❌ Unexpected error in auth callback:', {
+        error: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined
+      });
+
       redirectUrl.pathname = '/login';
       redirectUrl.searchParams.set('error', '登录过程中发生错误，请重试。');
       return NextResponse.redirect(redirectUrl);
     }
   } else {
-    console.warn('No code parameter found in auth callback');
+    console.warn('⚠️ No code parameter found in auth callback');
+    console.log('  - Available search params:', Array.from(requestUrl.searchParams.keys()));
+
     redirectUrl.pathname = '/login';
     redirectUrl.searchParams.set('error', '无效的登录链接。');
   }

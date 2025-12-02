@@ -30,7 +30,7 @@ export const createBrowserSupabase = () => {
         ...(isProduction && domain && {
           domain: domain.includes('.') ? domain : `.${domain}`,
           secure: true,
-          sameSite: 'none',
+          sameSite: 'lax',
         }),
       },
     }
