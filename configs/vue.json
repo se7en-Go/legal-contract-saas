@@ -1,0 +1,17 @@
+{
+  "name": "vue",
+  "description": "Vue.js 官方文档，包含 Vue 3+ 的所有功能、组合式 API、响应式系统和最佳实践",
+  "base_url": "https://vuejs.org",
+  "selectors": {
+    "main_content": "main",
+    "title": "h1",
+    "code_blocks": "pre code"
+  },
+  "url_patterns": {
+    "include": [],
+    "exclude": []
+  },
+  "categories": {},
+  "rate_limit": 0.5,
+  "max_pages": 100
+}

@@ -21,9 +21,9 @@ export async function GET(request: NextRequest) {
     const cleanSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/[\n\r]/g, '');
 
     console.log('🧹 Clean URLs:', {
-      supabaseUrl: cleanSupababaseUrl?.substring(0, 50) + '...',
+      supabaseUrl: cleanSupabaseUrl?.substring(0, 50) + '...',
       siteUrl: cleanSiteUrl,
-      supabaseKey: cleanSupababaseKey ? cleanSupababaseKey.substring(0, 20) + '...' : null
+      supabaseKey: cleanSupabaseKey ? cleanSupabaseKey.substring(0, 20) + '...' : null
     });
 
     if (!cleanSupabaseUrl || !cleanSupabaseKey) {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         error: 'Missing required environment variables',
         envVars,
         cleanUrls: {
-          supabaseUrl: cleanSupababaseUrl,
+          supabaseUrl: cleanSupabaseUrl,
           supabaseKey: cleanSupabaseKey,
           siteUrl: cleanSiteUrl
         }
@@ -63,12 +63,18 @@ export async function GET(request: NextRequest) {
     });
 
     // 测试一个简单的用户查询
+    let userTest = null;
+    let userError = null;
+
     if (authTest.session?.user?.id) {
-      const { data: userTest, error: userError } = await supabase
+      const result = await supabase
         .from('profiles')
         .select('id, email, created_at')
         .eq('id', authTest.session.user.id)
         .single();
+
+      userTest = result.data;
+      userError = result.error;
 
       console.log('👤 User profile test result:', { userTest, userError });
     }

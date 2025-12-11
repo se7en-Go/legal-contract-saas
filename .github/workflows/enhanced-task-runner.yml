@@ -1,0 +1,256 @@
+name: Enhanced Task Runner System
+
+on:
+  schedule:
+    # 每5分钟执行主任务处理器
+    - cron: "*/5 * * * *"
+    # 每小时执行维护任务
+    - cron: "0 * * * *"
+    # 每天凌晨2点执行深度清理
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'process'
+        type: choice
+        options:
+        - process
+        - maintenance
+        - cleanup
+        - health
+      task_type:
+        description: 'Specific task type to process'
+        required: false
+        default: ''
+        type: string
+      worker_count:
+        description: 'Number of parallel workers'
+        required: false
+        default: '3'
+        type: string
+
+env:
+  FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/task-runner-v2
+  LEGACY_FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/task-runner
+  AUTH_TOKEN: ${{ secrets.TASK_RUNNER_TOKEN }}
+
+jobs:
+  # 健康检查作业
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check task runner health
+        run: |
+          echo "🔍 Checking task runner health..."
+          STATUS=$(curl -s -o response.json -w "%{http_code}" "${{ env.FUNCTION_URL }}?action=health" \
+            -H "Authorization: Bearer ${{ env.AUTH_TOKEN }}" \
+            -H "Content-Type: application/json")
+          echo "Health Status: $STATUS"
+          cat response.json
+
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✅ Task runner is healthy"
+          else
+            echo "❌ Task runner health check failed"
+            exit 1
+          fi
+
+  # 主任务处理作业
+  process-tasks:
+    needs: health-check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        worker-id: [1, 2, 3]
+      fail-fast: false
+    steps:
+      - name: Process tasks - Worker ${{ matrix.worker-id }}
+        timeout-minutes: 15
+        run: |
+          echo "🚀 Starting task worker ${{ matrix.worker-id }}"
+
+          # 准备请求参数
+          ACTION="${{ github.event.inputs.action || 'process' }}"
+          TASK_TYPE="${{ github.event.inputs.task_type || '' }}"
+
+          # 构建URL
+          URL="${{ env.FUNCTION_URL }}?action=${ACTION}"
+          if [ ! -z "$TASK_TYPE" ]; then
+            URL="${URL}&task_type=${TASK_TYPE}"
+          fi
+
+          echo "Request URL: $URL"
+
+          # 执行请求并记录结果
+          STATUS=$(curl -s -o response_${{ matrix.worker-id }}.json -w "%{http_code}" "$URL" \
+            -H "Authorization: Bearer ${{ env.AUTH_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --max-time 600)
+
+          echo "Worker ${{ matrix.worker-id }} Status: $STATUS"
+          echo "Worker ${{ matrix.worker-id }} Response:"
+          cat response_${{ matrix.worker-id }}.json
+
+          # 检查响应状态
+          if [ "$STATUS" -ge 400 ]; then
+            echo "❌ Worker ${{ matrix.worker-id }} failed with status $STATUS"
+            # 尝试使用旧版本作为备份
+            echo "🔄 Fallback to legacy task runner..."
+            FALLBACK_STATUS=$(curl -s -o fallback_response.json -w "%{http_code}" "${{ env.LEGACY_FUNCTION_URL }}" \
+              -H "Authorization: Bearer ${{ env.AUTH_TOKEN }}" \
+              -H "Content-Type: application/json")
+            echo "Fallback Status: $FALLBACK_STATUS"
+            cat fallback_response.json
+
+            if [ "$FALLBACK_STATUS" -ge 400 ]; then
+              exit 1
+            fi
+          else
+            echo "✅ Worker ${{ matrix.worker-id }} completed successfully"
+          fi
+
+          # 记录任务处理统计
+          PROCESSED=$(cat response_${{ matrix.worker-id }}.json | jq -r '.tasks_processed // 0')
+          echo "📊 Worker ${{ matrix.worker-id }} processed $PROCESSED tasks"
+
+  # 定时维护作业（每小时）
+  maintenance:
+    if: github.event.schedule == '0 * * * *' || github.event.inputs.action == 'maintenance'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run maintenance tasks
+        run: |
+          echo "🔧 Running maintenance tasks..."
+
+          STATUS=$(curl -s -o maintenance_response.json -w "%{http_code}" "${{ env.FUNCTION_URL }}?action=maintenance" \
+            -H "Authorization: Bearer ${{ env.AUTH_TOKEN }}" \
+            -H "Content-Type: application/json")
+
+          echo "Maintenance Status: $STATUS"
+          echo "Maintenance Response:"
+          cat maintenance_response.json
+
+          if [ "$STATUS" -ge 400 ]; then
+            echo "❌ Maintenance failed"
+            exit 1
+          else
+            echo "✅ Maintenance completed successfully"
+          fi
+
+  # 深度清理作业（每天）
+  deep-cleanup:
+    if: github.event.schedule == '0 2 * * *' || github.event.inputs.action == 'cleanup'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run deep cleanup
+        run: |
+          echo "🧹 Running deep cleanup..."
+
+          # 调用维护任务，包含清理逻辑
+          STATUS=$(curl -s -o cleanup_response.json -w "%{http_code}" "${{ env.FUNCTION_URL }}?action=maintenance" \
+            -H "Authorization: Bearer ${{ env.AUTH_TOKEN }}" \
+            -H "Content-Type: application/json")
+
+          echo "Cleanup Status: $STATUS"
+          echo "Cleanup Response:"
+          cat cleanup_response.json
+
+          if [ "$STATUS" -ge 400 ]; then
+            echo "❌ Deep cleanup failed"
+            exit 1
+          else
+            echo "✅ Deep cleanup completed successfully"
+          fi
+
+  # 监控和报告作业
+  monitoring:
+    needs: [process-tasks, health-check]
+    runs-on: ubuntu-latest
+    if: always() && (needs.process-tasks.result == 'success' || needs.process-tasks.result == 'failure')
+    steps:
+      - name: Collect metrics and report
+        run: |
+          echo "📈 Collecting execution metrics..."
+
+          # 收集各worker的结果
+          TOTAL_PROCESSED=0
+          SUCCESSFUL_WORKERS=0
+
+          for i in {1..3}; do
+            if [ -f "response_${i}.json" ]; then
+              PROCESSED=$(cat response_${i}.json | jq -r '.tasks_processed // 0')
+              TOTAL_PROCESSED=$((TOTAL_PROCESSED + PROCESSED))
+
+              # 检查worker是否成功
+              if [ -s "response_${i}.json" ]; then
+                SUCCESSFUL_WORKERS=$((SUCCESSFUL_WORKERS + 1))
+              fi
+            fi
+          done
+
+          echo "📊 Execution Summary:"
+          echo "  - Total tasks processed: $TOTAL_PROCESSED"
+          echo "  - Successful workers: $SUCCESSFUL_WORKERS/3"
+          echo "  - Timestamp: $(date -u)"
+
+          # 如果有任务处理，记录详细统计
+          if [ $TOTAL_PROCESSED -gt 0 ]; then
+            echo "✅ Successfully processed $TOTAL_PROCESSED tasks"
+          else
+            echo "ℹ️ No tasks were processed (queue may be empty)"
+          fi
+
+          # 创建摘要报告
+          cat > execution_summary.md << EOF
+          # Task Runner Execution Summary
+
+          **Execution Time:** $(date -u)
+          **Worker Status:** $SUCCESSFUL_WORKERS/3 successful
+          **Total Tasks Processed:** $TOTAL_PROCESSED
+
+          ## Worker Results
+          EOF
+
+          for i in {1..3}; do
+            if [ -f "response_${i}.json" ]; then
+              echo "### Worker $i" >> execution_summary.md
+              echo '```json' >> execution_summary.md
+              cat response_${i}.json >> execution_summary.md
+              echo '```' >> execution_summary.md
+              echo "" >> execution_summary.md
+            fi
+          done
+
+          # 上传摘要作为artifact
+          mkdir -p artifacts
+          cp execution_summary.md artifacts/
+          cp response_*.json artifacts/ 2>/dev/null || true
+
+      - name: Upload execution artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: task-runner-execution-${{ github.run_number }}
+          path: artifacts/
+          retention-days: 7
+
+  # 错误通知作业
+  error-notification:
+    needs: [process-tasks, health-check]
+    runs-on: ubuntu-latest
+    if: failure()
+    steps:
+      - name: Report failure
+        run: |
+          echo "❌ Task runner workflow failed!"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Event: ${{ github.event_name }}"
+
+          # 这里可以添加Slack、Email或其他通知方式
+          # curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"🚨 Task Runner Workflow Failed!"}' \
+          #   YOUR_SLACK_WEBHOOK_URL

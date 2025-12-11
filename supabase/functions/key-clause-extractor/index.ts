@@ -6,12 +6,33 @@ type ExtractPayload = {
   categories?: string[];
 };
 
+type ClauseRecord = {
+  id: string;
+  clause_no: string | null;
+  title: string | null;
+  body: string | null;
+};
+
+type ExtractedClause = {
+  category: string;
+  summary: string;
+  attributes?: Record<string, unknown>;
+  clause_id?: string;
+  clause_no?: string;
+};
+
+type ClauseIndex = {
+  byId: Map<string, ClauseRecord>;
+  byNumber: Map<string, ClauseRecord>;
+};
+
 const supabase = getServiceClient();
 
 function assertAuthorized(req: Request) {
   const expected = Deno.env.get("KEY_CLAUSE_EXTRACTOR_TOKEN");
   if (!expected) throw new Error("KEY_CLAUSE_EXTRACTOR_TOKEN missing");
-  const token = req.headers.get("authorization")?.replace("Bearer", "").trim();
+  const token = req.headers.get("x-agent-token") ??
+    req.headers.get("authorization")?.replace(/^(?:Bearer\s+)/i, "").trim();
   if (!token || token !== expected) {
     throw new Error("Unauthorized");
   }
@@ -25,13 +46,41 @@ async function fetchClauses(contractVersionId: string) {
     .order("clause_no", { ascending: true });
 
   if (error) throw new Error(`Failed to load clauses: ${error.message}`);
-  return data ?? [];
+  return (data ?? []) as ClauseRecord[];
 }
 
-async function insertKeyClauses(contractVersionId: string, rows: { category: string; summary: string; attributes?: Record<string, unknown> }[]) {
+function buildClauseIndex(clauses: ClauseRecord[]): ClauseIndex {
+  const byId = new Map<string, ClauseRecord>();
+  const byNumber = new Map<string, ClauseRecord>();
+  clauses.forEach((clause) => {
+    byId.set(clause.id, clause);
+    if (clause.clause_no) {
+      byNumber.set(clause.clause_no, clause);
+    }
+  });
+  return { byId, byNumber };
+}
+
+function resolveClauseId(row: ExtractedClause, index: ClauseIndex): string | null {
+  if (row.clause_id && index.byId.has(row.clause_id)) {
+    return row.clause_id;
+  }
+  if (row.clause_no) {
+    const match = index.byNumber.get(row.clause_no);
+    if (match) return match.id;
+  }
+  return null;
+}
+
+async function insertKeyClauses(
+  contractVersionId: string,
+  rows: ExtractedClause[],
+  clauseIndex: ClauseIndex,
+) {
   if (!rows.length) return;
   const payload = rows.map((row) => ({
     contract_version_id: contractVersionId,
+    clause_id: resolveClauseId(row, clauseIndex),
     category: row.category,
     summary: row.summary,
     attributes: row.attributes ?? {},
@@ -54,40 +103,60 @@ Deno.serve(async (req) => {
 
     const clauses = await fetchClauses(payload.contract_version_id);
     if (!clauses.length) {
-      return new Response(JSON.stringify({ message: "no-clauses" }), { status: 200, headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ message: "no-clauses" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
+
+    const clauseIndex = buildClauseIndex(clauses);
+    const clauseSummaries = clauses.map((clause) => ({
+      id: clause.id,
+      number: clause.clause_no ?? "",
+      title: clause.title ?? "",
+      text: clause.body ?? "",
+    }));
+
+    const systemPrompt =
+      "ÄãÊÇÒ»Ãû·¨ÂÉ×¨¼Ò£¬Çë´ÓÊäÈëÌõ¿îÖĞÌôÑ¡Èô¸É¹Ø¼üÌõ¿î¡£" +
+      "Êä³ö JSON ½á¹¹ {\"clauses\":[{\"category\":\"...\",\"summary\":\"...\",\"clause_id\":\"<ÊäÈëÌá¹©µÄ id>\",\"attributes\":{}}]}" +
+      "£¬clause_id ±ØĞëÒıÓÃÊäÈëÊı×éÖĞµÄ id£¬¿ÉÑ¡Ìá¹© clause_no ×÷Îª±¸·İ¡£";
 
     const llmResponse = await callLlm({
       response_format: { type: "json_object" },
       messages: [
+        { role: "system", content: systemPrompt },
         {
-          role: "system",
-          content:
-            "ä½ æ˜¯ä¸€åæ³•å¾‹ä¸“å®¶ï¼Œè¯·å°†åˆåŒæ¡æ¬¾å½’æ¡£ä¸ºå°‘é‡å…³é”®æ¡æ¬¾ï¼Œè¾“å‡º JSON: {\"clauses\":[{\"category\":\"ä»˜æ¬¾æ¡æ¬¾\",\"summary\":\"...\",\"attributes\":{\"sla\":\"99.5%\"}}]}ã€‚",
+          role: "user",
+          content: JSON.stringify({
+            clauses: clauseSummaries,
+            focus: payload.categories ?? [],
+          }),
         },
-        { role: "user", content: JSON.stringify({ clauses, focus: payload.categories ?? [] }) },
       ],
     });
 
-    const json = llmResponse?.choices?.[0]?.message?.content;
-    const parsed = json ? JSON.parse(json) : { clauses: [] };
-    await insertKeyClauses(payload.contract_version_id, parsed.clauses ?? []);
+    const raw = llmResponse?.choices?.[0]?.message?.content || "";
+    const sanitized = raw.replace(/```json|```/gi, "").trim();
+    const parsed = sanitized ? JSON.parse(sanitized) : { clauses: [] };
+    const extracted = Array.isArray(parsed?.clauses) ? parsed.clauses as ExtractedClause[] : [];
+    await insertKeyClauses(payload.contract_version_id, extracted, clauseIndex);
 
     await supabase.from("notifications").insert({
       tenant_id: payload.tenant_id,
       entity: `contract_version:${payload.contract_version_id}`,
       severity: "info",
-      message: `å…³é”®æ¡æ¬¾å·²æå– (${parsed.clauses?.length ?? 0})`,
+      message: `¹Ø¼üÌõ¿îÒÑÌáÈ¡(${extracted.length})`,
       metadata: { categories: payload.categories ?? [] },
     });
 
-    return new Response(JSON.stringify({ inserted: parsed.clauses?.length ?? 0 }), {
+    return new Response(JSON.stringify({ inserted: extracted.length }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error(error);
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
+    return new Response(JSON.stringify({ error: (error as Error).message ?? "Unknown error" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

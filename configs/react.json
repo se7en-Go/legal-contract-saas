@@ -1,0 +1,17 @@
+{
+  "name": "react",
+  "description": "React \u5b98\u65b9\u6587\u6863\uff0c\u5305\u542b React 18+ \u7684\u6240\u6709\u529f\u80fd\u3001Hooks\u3001\u6700\u4f73\u5b9e\u8df5\u548c\u73b0\u4ee3\u5f00\u53d1\u6a21\u5f0f",
+  "base_url": "https://react.dev",
+  "selectors": {
+    "main_content": "article",
+    "title": "h1",
+    "code_blocks": "pre code"
+  },
+  "url_patterns": {
+    "include": [],
+    "exclude": []
+  },
+  "categories": {},
+  "rate_limit": 0.5,
+  "max_pages": 100
+}

@@ -1,4 +1,5 @@
-﻿import { callLlm, getServiceClient } from "../_shared/llmClient.ts";
+﻿import JSZip from "npm:jszip";
+import { callLlm, getServiceClient } from "../_shared/llmClient.ts";
 
 type TaskRecord = {
   id: string;
@@ -19,10 +20,10 @@ const MAX_ATTEMPTS = Number(Deno.env.get("TASK_MAX_ATTEMPTS") ?? 3);
 const CONTRACTS_BUCKET = Deno.env.get("CONTRACTS_BUCKET") ?? "contracts";
 
 function assertAuthorized(req: Request) {
+  const envToken = Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
+  if (!envToken) throw new Error("PROJECT_SERVICE_ROLE_KEY missing");
   const authHeader = req.headers.get("authorization") ?? "";
-  const envToken = Deno.env.get("TASK_RUNNER_SERVICE_TOKEN");
-  if (!envToken) throw new Error("TASK_RUNNER_SERVICE_TOKEN missing");
-  const token = authHeader.replace("Bearer", "").trim();
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   if (!token || token !== envToken) {
     throw new Error("Unauthorized");
   }
@@ -36,6 +37,36 @@ function bytesToBase64(bytes: Uint8Array) {
     binary += String.fromCharCode(...sub);
   }
   return btoa(binary);
+}
+
+function chunkBase64(input: string, chunkSize = 6000) {
+  const chunks = [];
+  for (let i = 0; i < input.length; i += chunkSize) {
+    chunks.push(input.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+async function extractDocxText(fileBytes: Uint8Array) {
+  const zip = await JSZip.loadAsync(fileBytes);
+  const document = zip.file("word/document.xml");
+  if (!document) {
+    throw new Error("DOCX 缺少 word/document.xml");
+  }
+  const xml = await document.async("string");
+  return xml
+    .replace(/<w:p[^>]*>/g, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function extractText(contractTitle: string, sourcePath: string, fileBytes: Uint8Array) {
+  const lower = sourcePath.toLowerCase();
+  if (lower.endsWith(".docx")) {
+    return await extractDocxText(fileBytes);
+  }
+  return await performOcr(contractTitle, fileBytes);
 }
 
 async function fetchQueuedTask() {
@@ -114,57 +145,72 @@ async function performOcr(contractTitle: string, fileBytes: Uint8Array) {
     throw new Error("Missing OCR configuration");
   }
 
-  const payload = {
-    model,
-    temperature: 0,
-    messages: [
-      { role: "system", content: "你是OCR专家，请将合同内容识别为可阅读的中文文本。" },
-      {
-        role: "user",
-        content:
-          `合同标题：${contractTitle}\n以下是合同文件的Base64编码，请解码成可阅读的文本：\n${bytesToBase64(fileBytes)}`,
-      },
-    ],
-  };
-
+  const base64Text = bytesToBase64(fileBytes);
+  const chunks = chunkBase64(base64Text, 6000);
+  const segments: string[] = [];
   const url = `${baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(payload),
-  });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`OCR request failed: ${response.status} ${text}`);
+  for (let i = 0; i < chunks.length; i++) {
+    const payload = {
+      model,
+      temperature: 0,
+      messages: [
+        { role: "system", content: "����OCRר�ң��뽫��ͬ����ʶ��Ϊ���Ķ��������ı���" },
+        {
+          role: "user",
+          content: `��ͬ���⣺${contractTitle}\n�� ${i + 1}/${chunks.length} �� Base64 �������£�����벢������Ķ��ı���\n${chunks[i]}`,
+        },
+      ],
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`OCR request failed: ${response.status} ${text}`);
+    }
+
+    const json = await response.json();
+    const content = json?.choices?.[0]?.message?.content;
+    if (!content) throw new Error(`OCR δ�������� (chunk ${i + 1})`);
+    segments.push(content as string);
   }
 
-  const json = await response.json();
-  const content = json?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("OCR 未返回内容");
-  return content as string;
+  return segments.join("\n---\n");
 }
 
 async function parseContractClauses(contractTitle: string, rawText: string) {
-  const prompt = `你是一位法律合同整理专家，请根据以下文本，将合同拆解为条款列表，包含条款编号、标题、正文。\n合同标题：${contractTitle}\n合同正文：\n${rawText}\n\n输出 JSON，格式 { \"clauses\": [{\"number\": \"1\", \"title\": \"\", \"text\": \"\"}, ...] }。`;
+  const promptLines = [
+    '你是一位法律合同审查专家，需要根据输入文本把合同拆成条款段落，并标注编号、标题、正文。',
+    '合同标题:' + contractTitle,
+    '合同内容:',
+    rawText,
+    '',
+    '请输出 JSON 格式 { "clauses": [{"number": "1", "title": "", "text": ""}, ...] }，只返回 JSON，不要包含其它字符或解释。',
+  ];
+  const prompt = promptLines.join("\n");
 
   const response = await callLlm({
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: "你是法律合同拆解专家。" },
+      { role: "system", content: '你是一位合同审查专家' },
       { role: "user", content: prompt },
     ],
   });
 
   const content = response?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("LLM 未返回内容");
-  const json = JSON.parse(content);
+  if (!content) throw new Error('LLM 未返回内容');
+  const sanitized = content.replace(/```json|```/g, '').trim();
+  const json = sanitized ? JSON.parse(sanitized) : { clauses: [] };
   return (json.clauses as Clause[]) ?? [];
 }
-
 async function insertClauses(contractVersionId: string, clauses: Clause[]) {
   if (!clauses.length) return;
   const rows = clauses.map((clause) => ({
@@ -180,9 +226,9 @@ async function insertClauses(contractVersionId: string, clauses: Clause[]) {
 
 async function runRiskAnalysis(tenantId: string, contractVersionId: string) {
   const baseUrl = Deno.env.get("PROJECT_SUPABASE_URL");
-  const serviceToken = Deno.env.get("TASK_RUNNER_SERVICE_TOKEN");
+  const serviceToken = Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
   if (!baseUrl || !serviceToken) {
-    throw new Error("Missing PROJECT_SUPABASE_URL or TASK_RUNNER_SERVICE_TOKEN");
+    throw new Error("Missing PROJECT_SUPABASE_URL or PROJECT_SERVICE_ROLE_KEY");
   }
 
   const response = await fetch(`${baseUrl}/functions/v1/risk-analyzer`, {
@@ -190,6 +236,7 @@ async function runRiskAnalysis(tenantId: string, contractVersionId: string) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${serviceToken}`,
+      apikey: serviceToken,
     },
     body: JSON.stringify({ tenant_id: tenantId, contract_version_id: contractVersionId }),
   });
@@ -204,8 +251,9 @@ async function runRiskAnalysis(tenantId: string, contractVersionId: string) {
 
 async function triggerKeyClauseExtraction(tenantId: string, contractVersionId: string) {
   const baseUrl = Deno.env.get("PROJECT_SUPABASE_URL");
-  const token = Deno.env.get("KEY_CLAUSE_EXTRACTOR_TOKEN");
-  if (!baseUrl || !token) {
+  const agentToken = Deno.env.get("KEY_CLAUSE_EXTRACTOR_TOKEN");
+  const serviceToken = Deno.env.get("PROJECT_SERVICE_ROLE_KEY");
+  if (!baseUrl || !agentToken || !serviceToken) {
     console.warn("Key clause extractor not configured");
     return;
   }
@@ -213,7 +261,9 @@ async function triggerKeyClauseExtraction(tenantId: string, contractVersionId: s
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${serviceToken}`,
+      apikey: serviceToken,
+      "x-agent-token": agentToken,
     },
     body: JSON.stringify({ tenant_id: tenantId, contract_version_id: contractVersionId }),
   }).catch((error) => console.error("key-clause-extractor failed", error));
@@ -241,7 +291,7 @@ Deno.serve(async (req) => {
     const version = await fetchContractVersion(contractVersionId);
     const contract = await fetchContract(version.contract_id);
     const fileBytes = await downloadContractBytes(version.source_path);
-    const rawText = await performOcr(contract.title, fileBytes);
+    const rawText = await extractText(contract.title, version.source_path, fileBytes);
 
     const clauses = await parseContractClauses(contract.title, rawText);
     await insertClauses(contractVersionId, clauses);
@@ -249,7 +299,7 @@ Deno.serve(async (req) => {
     await triggerKeyClauseExtraction(task.tenant_id, contractVersionId);
     await markTask(task.id, { status: "completed", updated_at: new Date().toISOString(), retry_count: task.retry_count ?? 0, last_error: null });
     await recordTaskAttempt(task.id, (task.retry_count ?? 0) + 1, "completed");
-    await createNotification(task.tenant_id, `task:${task.id}`, `任务 ${task.task_type} 已完成`, "success", { clauses_created: clauses.length });
+    await createNotification(task.tenant_id, `task:${task.id}`, `���� ${task.task_type} �����`, "success", { clauses_created: clauses.length });
 
     return new Response(JSON.stringify({ task_id: task.id, clauses_created: clauses.length }), {
       status: 200,
@@ -277,7 +327,7 @@ Deno.serve(async (req) => {
             status: "pending",
             note: message,
           });
-          await createNotification(currentTask.tenant_id, `task:${currentTask.id}`, `任务 ${currentTask.task_type} 多次失败`, "error", { last_error: message });
+          await createNotification(currentTask.tenant_id, `task:${currentTask.id}`, `���� ${currentTask.task_type} ���ʧ��`, "error", { last_error: message });
         }
       }
     } catch (inner) {

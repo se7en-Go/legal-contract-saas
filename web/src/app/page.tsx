@@ -46,11 +46,12 @@ export default function HomePage() {
     }
 
     if (code) {
-      // 如果有 code 参数，跳转到回调路由处理
-      console.log('🔄 Redirecting to auth callback with code');
+      // 如果有 code 参数，直接在服务端处理，避免客户端路由导致PKCE状态丢失
+      console.log('🔄 Handling auth code directly - redirecting to callback');
       const next = searchParams.get('next');
+      // 使用 window.location.href 进行完整页面重定向，保持PKCE状态
       const callbackUrl = next ? `/auth/callback?code=${code}&next=${encodeURIComponent(next)}` : `/auth/callback?code=${code}`;
-      router.push(callbackUrl);
+      window.location.href = callbackUrl;
       return;
     }
   }, [router, searchParams]);

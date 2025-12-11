@@ -93,7 +93,8 @@ Deno.serve(async (req) => {
     });
 
     const content = llmResponse?.choices?.[0]?.message?.content;
-    const parsed = content ? JSON.parse(content) : {};
+    const sanitized = content?.replace(/```json|```/g, "").trim() ?? "";
+    const parsed = sanitized ? JSON.parse(sanitized) : {};
     const inserted = await storeFindings(clauseMap, parsed.findings ?? []);
 
     return new Response(

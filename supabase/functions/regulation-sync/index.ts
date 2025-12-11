@@ -33,26 +33,50 @@ async function fetchFeedFromUrl(url: string): Promise<RegulationFeed[]> {
 }
 
 async function upsertRegulation(tenantId: string, feed: RegulationFeed) {
-  const { data, error } = await supabase
+  const { data: existing, error: selectError } = await supabase
     .from("regulations")
-    .upsert(
-      {
+    .select("id")
+    .eq("name", feed.name)
+    .maybeSingle();
+
+  if (selectError && selectError.code !== "PGRST116") {
+    throw new Error(`Failed to query regulation ${feed.name}: ${selectError.message}`);
+  }
+
+  let regulationId: string;
+  if (existing) {
+    const { error: updateError } = await supabase
+      .from("regulations")
+      .update({
+        jurisdiction: feed.jurisdiction,
+        effective_date: feed.effective_date ?? null,
+        expiry_date: feed.expiry_date ?? null,
+        source_url: feed.source_url ?? null,
+      })
+      .eq("id", existing.id);
+    if (updateError) {
+      throw new Error(`Failed to update regulation ${feed.name}: ${updateError.message}`);
+    }
+    regulationId = existing.id;
+    await supabase.from("regulation_sections").delete().eq("regulation_id", regulationId);
+  } else {
+    const { data: inserted, error: insertError } = await supabase
+      .from("regulations")
+      .insert({
         name: feed.name,
         jurisdiction: feed.jurisdiction,
         effective_date: feed.effective_date ?? null,
         expiry_date: feed.expiry_date ?? null,
         source_url: feed.source_url ?? null,
-      },
-      { onConflict: "name" },
-    )
-    .select("id")
-    .single();
-
-  if (error) {
-    throw new Error(`Failed to upsert regulation ${feed.name}: ${error.message}`);
+      })
+      .select("id")
+      .single();
+    if (insertError || !inserted) {
+      throw new Error(`Failed to insert regulation ${feed.name}: ${insertError?.message ?? "unknown error"}`);
+    }
+    regulationId = inserted.id;
   }
 
-  const regulationId = data.id;
   const sectionRows = feed.sections.map((section) => ({
     regulation_id: regulationId,
     section_no: section.section_no,
@@ -60,11 +84,11 @@ async function upsertRegulation(tenantId: string, feed: RegulationFeed) {
     tags: section.tags ?? [],
   }));
 
-  const { error: sectionError } = await supabase.from("regulation_sections").upsert(sectionRows, {
-    onConflict: "regulation_id, section_no",
-  });
-  if (sectionError) {
-    throw new Error(`Failed to upsert sections for ${feed.name}: ${sectionError.message}`);
+  if (sectionRows.length) {
+    const { error: sectionError } = await supabase.from("regulation_sections").insert(sectionRows);
+    if (sectionError) {
+      throw new Error(`Failed to insert sections for ${feed.name}: ${sectionError.message}`);
+    }
   }
 
   await supabase

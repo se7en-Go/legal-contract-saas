@@ -26,12 +26,29 @@ export async function signIn(formData: FormData) {
   // 清理并获取origin URL
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/[\n\r]/g, '');
   const origin = siteUrl ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+
+  // 添加调试日志
+  console.log('🔧 Login Debug Info:', {
+    siteUrl,
+    origin,
+    envSiteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+    isProduction: process.env.NODE_ENV === 'production',
+    hasWindow: typeof window !== 'undefined',
+    windowOrigin: typeof window !== 'undefined' ? window.location.origin : 'N/A'
+  });
   const params = new URLSearchParams();
   try {
+    const emailRedirectTo = `${origin}/auth/callback`;
+    console.log('📧 Sending Magic Link:', {
+      email,
+      emailRedirectTo,
+      fullRedirectUrl: emailRedirectTo
+    });
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${origin}/auth/callback`,
+        emailRedirectTo,
       },
     });
     if (error) {

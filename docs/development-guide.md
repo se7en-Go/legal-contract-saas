@@ -1,114 +1,132 @@
-# 开发指南（Still Legal AI 合同审查 SaaS）
+# 开发指南：Still Legal AI 合同审查 SaaS 平台
 
-## 1. 产品定位与目标
-- 面向法务、风控、业务协同团队，提供合同上传、自动拆条、风险比对、法规引用、关键条款沉淀、审批流以及洞察报告。
-- 重点场景：批量合同审查、跨团队协同、风险复核、客户交付。
-- 强调多租户隔离、可插拔 LLM/OCR 服务，并支持可追踪的 Agent 工作流。
+> 版本：2025-12-02 | 包含最新调试经验、认证修复和 Claude Flow 集成最佳实践
 
-## 2. 系统架构
+## 1. 产品定位
+- **目标用户**：企业法务、合规、业务协合同团队
+- **核心功能**：合同上传 → OCR/解析 → 风险识别 → 智能建议 → 关键条款提取 → 合规通知 → 洞察报告，全流程自动化
+- **愿景**：降低合同风险、提升 LLM/OCR 识别准确率、Agent 协作效率、人工审核效率
+
+## 2. 技术架构
 ```
-Next.js (App Router)
-   └─ API Routes（/api/*） → Supabase REST / Edge Functions
-Supabase
-   ├─ Postgres + pgvector
+Next.js 16 (App Router)
+ ├─ API Routes (/api/*) + Supabase REST + Edge Functions
+└─ Supabase
+   ├─ Postgres 15 + pgvector
    ├─ Storage (contracts bucket)
-   ├─ Auth / RLS
-   └─ Edge Functions（ingest-doc、task-runner、risk-analyzer、key-clause-extractor、
-                      regulation-sync、notification-dispatcher、insight-reporter）
-外部服务
-   ├─ OCR（DeepSeek / 自选 Provider）
-   └─ LLM（可对接 OpenAI、DeepSeek、Azure 等）
+   ├─ Auth / RLS / 多租户字段
+   └─ Edge Functions（ingest-doc、task-runner、risk-analyzer、key-clause-extractor、regulation-sync、notification-dispatcher、insight-reporter）
+└─ 外部服务：DeepSeek OCR/阿里云 OCR + OpenAI/DeepSeek/Azure 等 LLM
 ```
-- 所有前后端请求均使用 Supabase Auth JWT 鉴权，API Route 内部根据 `tenant_id` 限定数据范围。
-- Edge Functions 承担异步任务（OCR、解析、法规同步、通知派发、报告生成等）。
 
-## 3. 技术栈
-- 前端：React 19 + Next.js 16（App Router、Server Actions）、Tailwind CSS。
-- 后端/数据库：Supabase（Postgres 15 + pgvector + Storage）。
-- Edge Functions：Deno + TypeScript。
-- 工具：ESLint、GitHub Actions（可手动触发 Edge Functions）、Upstash/QStash（可选）。
+## 3. 开发栈
+- **前端**：React 19 + Next.js 16（Server Actions、App Router、TailwindCSS）
+- **后端**：Supabase（Auth/RLS、Postgres、Storage、pgvector）+ Edge Functions（Deno+TS）
+- **工具链**：ESLint、Vitest、GitHub Actions、Claude Flow、Upstash/QStash（可选调度）
 
-## 4. 核心模块
-1. **合同接入**：上传文件 → Storage → `ingest-doc` → 创建 `contracts`/`contract_versions` → `tasks`。
-2. **OCR + 拆条**：`task-runner` 下载原文 → OCR → LLM 抽条 → 写入 `clauses`。
-3. **风险识别**：`risk-analyzer` 基于条款调用 LLM，写入 `risk_findings`，同时触发通知。
-4. **法规管理**：`regulation-sync` 同步外部法规/章节；前端 `regulations` 页面浏览、搜索。
-5. **关键条款提取**：`key-clause-extractor` 聚合 LLM 输出写入 `key_clauses`。
-6. **任务队列与审批**：`tasks` 记录状态、重试、`task_attempts` 追踪；失败任务写入 `approvals`，并通过 `notifications` 推送到 webhook。
-7. **通知 / 审批流**：`notification-dispatcher` 读取 `notifications` 向租户 webhook 发送；前端 `/api/notifications` 可查询/标记；`/api/approvals` 支持审批操作。
-8. **洞察报告**：前端 `/reports` 调 `/api/reports/export`，由 `insight-reporter` 生成 Markdown/PDF（目前为 Markdown 预览）。
+## 4. 业务模块
+1. **合同导入**：上传 → Storage → `ingest-doc` → 创建 `contracts`/`contract_versions`/`tasks`
+2. **OCR + 解析**：`task-runner` 处理原文 → OCR → LLM 解析 → 写入 `clauses` → 自动建议 + 关键词提取
+3. **风险识别**：`risk-analyzer` 使用法学 LLM 生成 JSON → 写入 `risk_findings` → 生成通知
+4. **法规同步**：`regulation-sync` 抓取法规 + 嵌入 → 向 `/regulations` 页面推送
+5. **关键条款提取**：`key-clause-extractor` 强化检索 `clause_id` → 写入 `key_clauses` → 关键条款图配原文 → 在线合同编辑增强
+6. **审批/流程**：`tasks` + `task_attempts` 记录轨迹、失败重试 → 值写入 `approvals`、`notifications` → webhooks
+7. **仪表板/洞察**：`/dashboard` 综合指标、SLA → `insight-reporter` 生成 Markdown/PDF 报告
 
-## 5. 数据模型（关键表）
-- `contracts`、`contract_versions`、`clauses`、`risk_findings`、`key_clauses`
-- `regulations`、`regulation_sections`
-- `tasks`、`task_attempts`、`approvals`
-- `notifications`（新增 `severity`、`metadata`、`delivered_at`）
-- 其他：`tenants`、`tenant_users`、`audit_logs`、`annotations`
-- 所有多租户表均启用 RLS，`tenant_id` 必须与 Auth JWT 中一致。
+## 5. 数据模型摘要
+- **核心业务**：`contracts` → `contract_versions` → `clauses` → `risk_findings` → `key_clauses`
+- **法规库**：`regulations` → `regulation_sections`
+- **任务流**：`tasks` → `task_attempts` → `approvals` → `notifications`
+- **多租户**：所有表均带 RLS + JWT + `tenant_id` 字段匹配
 
-## 6. 主要流程
-### 6.1 上传 & 解析
-1. 前端 `/upload` 调 `/api/upload`（服务角色+Metadata），返回 Storage path。
-2. `/api/ingest` 调 `ingest-doc` Edge Function → 写 `contracts`、`contract_versions`、`tasks`。
-3. QStash/定时器触发 `task-runner` → OCR → LLM 拆条 → `clauses` → 调 `risk-analyzer`、`key-clause-extractor`。
+## 6. 关键流程
+### 上传 & 导入
+1. `/upload` → `/api/upload` → 获取签名 URL → 上传至 Storage → metadata 带 `tenant_id` 标记
+2. `/api/ingest` → 调用 `ingest-doc` → 创建合同/版本/任务，并返回 `task_id`
+3. Scheduler/QStash 触发 `task-runner` → OCR+解析 → 写入 `clauses` → 触发团队协作/关键词提取
 
-### 6.2 风险识别
-1. `risk-analyzer` 拉取 `clauses` → 调 LLM JSON 输出 → 写 `risk_findings`。
-2. 写成功后向 `notifications` 插入一条记录，`notification-dispatcher` 负责推送。
+### 风险识别
+- `risk-analyzer` 调用法学 LLM → 生成 `risk_findings` → 写入 `notifications` → Dashboard/告警使用
+- **支持中英文风险级别**：`'high'`、`'High'`、`'高'` 统一识别为高风险
 
-### 6.3 法规/关键条款
-1. `regulation-sync` 定期读取外部 feed（或 fallback 示例），Upsert `regulations`/`regulation_sections`。
-2. `key-clause-extractor` 接受任务后聚合 LLM 输出写入 `key_clauses`。
-3. 前端 `regulations`、`clauses` 页面通过 `/api/regulations`、`/api/key-clauses` 展示。
+### 关键条款
+- `key-clause-extractor` 用于检索增强 LLM → 生成带 `clause_id` 的 `clause_no` → 若无法匹配则记录 warning
+- 关键条款图配原文 → 在线图 → 在线编辑接口，支持人工修订和合同版本管理
 
-### 6.4 通知 & 审批
-1. `notifications` 表记录所有系统事件，支持 severity、metadata。
-2. `notification-dispatcher` 调租户 `outgoing_webhooks`。
-3. 任务失败超过重试阈值写入 `approvals`，前端 `/api/approvals` 可查看/处理。
+### 通知/审批
+- `notifications` 记录 severity、metadata、delivered_at → `notification-dispatcher` 触发 webhook
+- 失败写入 `approvals` → 前往 `/tasks` → 提醒团队或人工备注
 
-### 6.5 洞察报告
-1. `/reports` 页面调用 `/api/reports/export`，聚合合同/风险/任务统计。
-2. Edge Function `insight-reporter` 生成 Markdown 报告，前端可预览。
+### Dashboard / Reports
+- `/api/insights` 综合合同/风险/任务/SLA 数据 → 风险优先级（High/high/高）统一归一
+- Dashboard 全局告警通知 → 自动解析任务错误 → 例如 `task:xxx ingestion failed` → 通知团队 "xxx 合同解析失败"
+- `/api/reports/export` → 调用 `insight-reporter` → 生成专业法律合规报告
 
-## 7. 环境与配置
-- `.env.local`（前端）：
+## 7. 环境变量
+`.env.local` 示例配置：
+```
+NEXT_PUBLIC_SUPABASE_URL=https://crndpzhpvhcncoscoiba.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_m6prWpwKL3UXy6osD8Y7cg_FBA7Zm-l
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+CONTRACTS_BUCKET=contracts
+KEY_CLAUSE_EXTRACTOR_TOKEN=key_clause_secret_af31b7c2
+INSIGHT_REPORTER_TOKEN=insight_reporter_secret_af31b7c2
+```
+
+Edge Function Secrets 需要设置：`PROJECT_SUPABASE_URL`、`PROJECT_SERVICE_ROLE_KEY`、`KEY_CLAUSE_EXTRACTOR_TOKEN`，task-runner、key-clause-extractor 需保持一致，外加 `LLM_BASE_URL/KEY`、`OCR_BASE_URL/KEY` 等。
+
+## 8. 故障排查与维护
+- **查看日志**：Supabase Console → Edge Functions Logs，必要时 `functions deploy`
+- **任务重试**：SQL 直接 `update tasks set status='queued', retry_count=coalesce(retry_count,0) where id='...'`
+- **手动触发**：
+  ```bash
+  curl https://<proj>.supabase.co/functions/v1/task-runner \
+    -H "Authorization: Bearer <SERVICE_ROLE>" \
+    -H "Content-Type: application/json" -d '{}'
   ```
-  NEXT_PUBLIC_SUPABASE_URL=
-  NEXT_PUBLIC_SUPABASE_ANON_KEY=
-  SUPABASE_SERVICE_ROLE_KEY=
-  CONTRACTS_BUCKET=contracts
-  NEXT_PUBLIC_SITE_URL=http://localhost:3000
-  INSIGHT_REPORTER_TOKEN=...
-  KEY_CLAUSE_EXTRACTOR_TOKEN=...
-  REGULATION_SYNC_TOKEN=...
-  NOTIFICATION_DISPATCH_TOKEN=...
-  ```
-- Supabase Edge Function Secrets（控制台设置）：
-  - `TASK_RUNNER_SERVICE_TOKEN`
-  - `KEY_CLAUSE_EXTRACTOR_TOKEN`
-  - `REGULATION_SYNC_TOKEN`
-  - `NOTIFICATION_DISPATCH_TOKEN`
-  - `INSIGHT_REPORTER_TOKEN`
-  - `TASK_MAX_ATTEMPTS`
-  - `PROJECT_SUPABASE_URL` / `PROJECT_SERVICE_ROLE_KEY`
-  - `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL_ID`
-  - `OCR_BASE_URL` / `OCR_API_KEY` / `OCR_MODEL_ID`
+- **关键条款提取**：使用最新的 token 同步 `task-runner` 和 `key-clause-extractor`，参考 `curl .../key-clause-extractor` 即可
 
-## 8. 本地开发
-1. `npm install`（根目录、`web/` 如有需要）。
-2. `cd web && npm run dev`，默认监听 `http://localhost:3000`。
-3. Supabase Auth：在 Dashboard 的 `Authentication -> URL Configuration` 中，将 `Site URL` 与 `Redirect URLs` 设置为 `http://localhost:3000` 与 `http://localhost:3000/auth/callback`。
-4. 登录流程：`/login` → Magic Link → `/auth/callback`；若 Supabase 返回 `#access_token`，前端 `AuthHashHandler` 会自动解析。
+### 常见问题解决
+- **RLS 数据访问问题**：使用 Service Role 客户端绕过 RLS 限制进行调试
+- **报告数据为空**：检查风险查询是否使用正确的客户端，确保多表 JOIN 查询正确执行
+- **风险级别识别**：确保同时支持英文（'high', 'High'）和中文（'高'）风险级别
+- **Magic Link 认证失败**：环境变量中的换行符会导致认证失败，需要使用 `.trim().replace(/[\n\r]/g, '')` 清理
+- **Cookie 配置问题**：统一使用 `sameSite: 'lax'` 配置，避免跨域 Cookie 问题
 
-## 9. CI/CD & 任务运行
-- GitHub Actions 可部署/触发 Edge Functions（Invoke Task Runner workflow 如不需要可禁用）。
-- 任务调度：可用 Supabase Scheduler、Upstash QStash 或 GitHub Action 定期调用 `task-runner`、`notification-dispatcher`、`regulation-sync`。
+## 9. Claude Flow 集成
+### 日常使用流程
+```bash
+# 每日开始工作时
+./start-work.bat daily
 
-## 10. TODO & 扩展建议
-- 关键条款/法规 UI 已实现基本展示，可继续丰富筛选、批注。
-- 审批流可扩展多级流程、附件上传等。
-- 报告导出当前为 Markdown，可接入 PDF 服务（如 Puppeteer、Vercel OG）。
-- 提供更多 Agent 可视化监控、任务依赖图。
+# 遇到问题时存储上下文
+claude-flow memory store "当前问题" "详细描述问题..." --reasoningbank
+
+# 修复后记录解决方案
+claude-flow memory store "问题解决" "解决方案和验证结果..." --reasoningbank
+
+# 搜索类似问题
+claude-flow memory query "关键词" --reasoningbank
+```
+
+### 最佳实践
+- **项目初始化**：记录项目架构、技术栈、核心模块
+- **问题解决**：记录问题描述、分析过程、解决方案、验证结果
+- **知识积累**：建立项目专属的技术知识库，避免重复踩坑
+- **定期回顾**：搜索历史记忆，快速检索解决方案
+
+## 10. 性能优化建议
+- 数据库外键索引优化（已识别缺少15个索引）
+- OCR 并行化处理
+- LLM 调用缓存机制
+- Agent 协作优化
+- 实时反馈用户体验提升
+
+## 11. TODO / 规划
+- 自动化报告导出工具：Dashboard 实时数据图表、风险趋势可视化、Report PDF 导出、关键条款
+- Claude Flow 深度集成：智能调试助手、问题自动诊断、解决方案推荐
+- 性能监控：SLA 追踪、错误率分析、系统健康度监控
 
 ---
-如需新增功能或部署帮助，请同步更新本指南，保持流程/环境一致性。*** End Patch
+
+**重要说明**：本指南基于实际开发经验编写，包含了最新的调试发现和 Claude Flow 使用最佳实践。修改 Agent 或 Edge Function 时，请先合并到本指南，更新对应章节，确保文档与实际代码保持同步。

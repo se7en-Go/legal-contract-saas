@@ -12,10 +12,26 @@ type ReporterPayload = {
 };
 
 function assertAuthorized(req: Request) {
-  const token = req.headers.get("authorization")?.replace("Bearer", "").trim();
+  // 检查自定义的 insight-reporter-token 头部
+  const reporterToken = req.headers.get("x-insight-reporter-token");
   const expected = Deno.env.get("INSIGHT_REPORTER_TOKEN");
-  if (!expected) throw new Error("INSIGHT_REPORTER_TOKEN missing");
-  if (!token || token !== expected) throw new Error("Unauthorized");
+
+  if (!expected) {
+    throw new Error("INSIGHT_REPORTER_TOKEN missing");
+  }
+
+  if (reporterToken === expected) {
+    return; // 认证通过
+  }
+
+  // 兼容旧的认证方式（直接 Bearer token）
+  const authHeader = req.headers.get("authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.replace("Bearer", "").trim();
+    if (token === expected) return;
+  }
+
+  throw new Error("Unauthorized");
 }
 
 Deno.serve(async (req) => {

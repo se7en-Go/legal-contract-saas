@@ -1,0 +1,17 @@
+{
+  "name": "fastapi",
+  "description": "FastAPI 官方文档，包含现代 Python Web API 框架的所有功能、依赖注入、自动文档和最佳实践",
+  "base_url": "https://fastapi.tiangolo.com",
+  "selectors": {
+    "main_content": "main",
+    "title": "h1",
+    "code_blocks": "pre code"
+  },
+  "url_patterns": {
+    "include": [],
+    "exclude": []
+  },
+  "categories": {},
+  "rate_limit": 0.5,
+  "max_pages": 100
+}

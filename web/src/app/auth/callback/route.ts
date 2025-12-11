@@ -10,6 +10,15 @@ export async function GET(request: NextRequest) {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/[\n\r]/g, '') || requestUrl.origin;
   const redirectUrl = new URL(next, baseUrl);
 
+  // 添加请求信息用于调试
+  console.log('🔍 Auth Callback Request Info:', {
+    userAgent: request.headers.get('user-agent'),
+    referer: request.headers.get('referer'),
+    cfRay: request.headers.get('cf-ray'),
+    xForwardedFor: request.headers.get('x-forwarded-for'),
+    ip: request.headers.get('x-real-ip') || 'unknown'
+  });
+
   // 添加详细的调试信息（仅开发环境）
   if (process.env.NODE_ENV !== 'production') {
     console.log('🔍 Auth callback debug:');
@@ -23,7 +32,11 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     try {
-      const supabase = await createServerSupabase({ canWriteCookies: true });
+      // 传递request对象以检测代理环境
+      const supabase = await createServerSupabase({
+        canWriteCookies: true,
+        request
+      });
 
       if (process.env.NODE_ENV !== 'production') {
         console.log('🔄 Attempting to exchange code for session...');

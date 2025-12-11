@@ -1,4 +1,9 @@
 import { createBrowserClient } from '@supabase/ssr';
+import {
+  PROXY_SUPABASE_CONFIG,
+  detectCloudflareProxy,
+  createProxyOptimizedCookieOptions
+} from './supabase-proxy-config';
 
 export const createBrowserSupabase = () => {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -14,6 +19,7 @@ export const createBrowserSupabase = () => {
   };
 
   const domain = getDomain();
+  const isViaCloudflare = detectCloudflareProxy();
 
   // 清理环境变量中的换行符和空白字符
   const cleanSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/[\n\r]/g, '');
@@ -22,6 +28,21 @@ export const createBrowserSupabase = () => {
   if (!cleanSupabaseUrl || !cleanSupabaseKey) {
     throw new Error('Missing required Supabase environment variables');
   }
+
+  console.log('🌐 Browser Supabase Configuration:', {
+    isProduction,
+    domain,
+    isViaCloudflare,
+    userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'server',
+  });
+
+  // 配置Cookie选项
+  const cookieOptions = isProduction && domain ?
+    createProxyOptimizedCookieOptions(isProduction, domain, isViaCloudflare) :
+    {
+      secure: false,
+      sameSite: 'lax',
+    };
 
   return createBrowserClient(
     cleanSupabaseUrl,
@@ -32,15 +53,10 @@ export const createBrowserSupabase = () => {
         persistSession: true,
         // 自动刷新 token
         autoRefreshToken: true,
+        // 代理环境调试
+        debug: process.env.NODE_ENV === 'development',
       },
-      cookieOptions: {
-        // 生产环境 Cookie 配置
-        ...(isProduction && domain && {
-          domain: domain.includes('.') ? domain : `.${domain}`,
-          secure: true,
-          sameSite: 'lax',
-        }),
-      },
+      cookieOptions,
     }
   );
 };

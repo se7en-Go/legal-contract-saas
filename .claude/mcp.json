@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-filesystem", "D:/AI交易系统", "D:/GEO优化", "D:/301proxy", "D:/剥头皮", "D:/"],
+      "timeout": 120000,
+      "env": {}
+    }
+  }
+}

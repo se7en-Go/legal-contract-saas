@@ -1,11 +1,20 @@
 import { cookies } from 'next/headers';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import {
+  PROXY_SUPABASE_CONFIG,
+  detectCloudflareProxy,
+  createProxyOptimizedCookieOptions
+} from './supabase-proxy-config';
 
 type ServerSupabaseOptions = {
   canWriteCookies?: boolean;
+  request?: Request; // 添加request参数以检测代理
 };
 
-export const createServerSupabase = async ({ canWriteCookies = false }: ServerSupabaseOptions = {}) => {
+export const createServerSupabase = async ({
+  canWriteCookies = false,
+  request
+}: ServerSupabaseOptions = {}) => {
   const cookieStore = await cookies();
 
   // 获取当前域名用于 Cookie 设置
@@ -26,6 +35,7 @@ export const createServerSupabase = async ({ canWriteCookies = false }: ServerSu
 
   const isProduction = process.env.NODE_ENV === 'production';
   const domain = getDomain();
+  const isViaCloudflare = detectCloudflareProxy(request);
 
   // 清理环境变量中的换行符和空白字符
   const cleanSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/[\n\r]/g, '');
@@ -34,6 +44,13 @@ export const createServerSupabase = async ({ canWriteCookies = false }: ServerSu
   if (!cleanSupabaseUrl || !cleanSupabaseKey) {
     throw new Error('Missing required Supabase environment variables');
   }
+
+  console.log('🌐 Supabase Configuration:', {
+    isProduction,
+    domain,
+    isViaCloudflare,
+    siteUrl: PROXY_SUPABASE_CONFIG.getSiteUrl(),
+  });
 
   return createServerClient(
     cleanSupabaseUrl,
@@ -48,12 +65,23 @@ export const createServerSupabase = async ({ canWriteCookies = false }: ServerSu
           cookiesToSet.forEach(({ name, value, options }) => {
             const cookieOptions = normalizeCookieOptions(options);
 
-            // 生产环境 Cookie 配置
+            // 使用代理优化配置
             if (isProduction && domain !== 'localhost') {
-              cookieOptions.domain = domain.includes('.') ? domain : `.${domain}`;
-              cookieOptions.secure = true;
-              // 修复：使用 'lax' 而不是 'none' 来解决跨域问题
-              cookieOptions.sameSite = 'lax';
+              const proxyOptimizedOptions = createProxyOptimizedCookieOptions(
+                isProduction,
+                domain,
+                isViaCloudflare
+              );
+
+              Object.assign(cookieOptions, proxyOptimizedOptions);
+
+              console.log('🍪 Cookie Options Set:', {
+                name,
+                domain: cookieOptions.domain,
+                sameSite: cookieOptions.sameSite,
+                secure: cookieOptions.secure,
+                isViaCloudflare,
+              });
             }
 
             cookieStore.set({
