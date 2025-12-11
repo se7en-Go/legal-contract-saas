@@ -229,7 +229,7 @@ jobs:
           cp response_*.json artifacts/ 2>/dev/null || true
 
       - name: Upload execution artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: task-runner-execution-${{ github.run_number }}
