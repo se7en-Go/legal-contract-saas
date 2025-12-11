@@ -86,14 +86,20 @@ async function extractText(contractTitle: string, sourcePath: string, fileBytes:
   return await performOcr(contractTitle, fileBytes);
 }
 
-// 批量获取任务 - 使用分布式锁
+// 批量获取任务 - 直接查询不使用RPC函数（临时修复）
 async function fetchQueuedTasks(taskType?: string, batchSize = BATCH_SIZE): Promise<TaskRecord[]> {
-  const { data, error } = await supabase
-    .rpc('fetch_queued_tasks', {
-      p_worker_id: WORKER_ID,
-      p_batch_size: batchSize,
-      p_task_type: taskType || null
-    });
+  const query = supabase
+    .from("tasks")
+    .select("id, tenant_id, task_type, payload, retry_count, priority")
+    .eq("status", "queued")
+    .order("priority DESC", "created_at ASC")
+    .limit(batchSize);
+
+  if (taskType) {
+    query.eq("task_type", taskType);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error('Failed to fetch tasks:', error);
@@ -129,6 +135,12 @@ async function releaseTask(taskId: string, status: string, error?: string) {
 
 // 记录任务指标
 async function recordTaskMetrics(metrics: TaskMetrics) {
+  // 检查必需字段
+  if (!metrics.task_type) {
+    console.error("Missing task_type in metrics, skipping record");
+    return;
+  }
+
   const { error } = await supabase
     .from("task_metrics")
     .insert({
@@ -371,6 +383,11 @@ async function processTask(task: TaskRecord): Promise<{ success: boolean; error?
   const startTime = Date.now();
 
   try {
+    // 确保task记录有id
+    if (!task.id) {
+      throw new Error("Task record missing id");
+    }
+
     const contractVersionId = task.payload?.contract_version_id as string | undefined;
     if (!contractVersionId) {
       throw new Error("missing contract_version_id");
