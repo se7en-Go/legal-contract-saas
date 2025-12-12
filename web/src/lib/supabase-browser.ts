@@ -41,7 +41,7 @@ export const createBrowserSupabase = () => {
     createProxyOptimizedCookieOptions(isProduction, domain, isViaCloudflare) :
     {
       secure: false,
-      sameSite: 'lax',
+      sameSite: 'lax' as const,
     };
 
   return createBrowserClient(
