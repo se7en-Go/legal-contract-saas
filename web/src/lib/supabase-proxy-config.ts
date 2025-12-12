@@ -29,11 +29,6 @@ export function createProxyOptimizedCookieOptions(
       domain: domain.includes('.') ? domain : `.${domain}`,
       secure: true,
       sameSite: 'none', // 代理环境需要none以支持跨域
-      // 添加代理相关的安全属性
-      // @ts-ignore - Chrome浏览器支持SameSite=None; Secure
-      sameSite: 'none',
-      // 强制设置Secure以配合SameSite=None
-      secure: true,
     };
   }
 
