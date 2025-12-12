@@ -277,21 +277,21 @@ export default function RisksPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="surface-panel p-4">
-          <p className="text-sm text-slate-400">风险总览（不分页）</p>
-          <p className="mt-2 text-3xl font-semibold text-white">{stats.total}</p>
+        <div className="surface-panel p-4 text-center">
+          <p className="text-sm text-slate-400 text-center">风险总览（不分页）</p>
+          <p className="mt-2 text-3xl font-semibold text-white text-center">{stats.total}</p>
         </div>
-        <div className="surface-panel p-4">
-          <p className="text-sm text-slate-400">高风险</p>
-          <p className="mt-2 text-3xl font-semibold text-rose-200">{stats.high}</p>
+        <div className="surface-panel p-4 text-center">
+          <p className="text-sm text-slate-400 text-center">高风险</p>
+          <p className="mt-2 text-3xl font-semibold text-rose-200 text-center">{stats.high}</p>
         </div>
-        <div className="surface-panel p-4">
-          <p className="text-sm text-slate-400">中风险</p>
-          <p className="mt-2 text-3xl font-semibold text-amber-200">{stats.medium}</p>
+        <div className="surface-panel p-4 text-center">
+          <p className="text-sm text-slate-400 text-center">中风险</p>
+          <p className="mt-2 text-3xl font-semibold text-amber-200 text-center">{stats.medium}</p>
         </div>
-        <div className="surface-panel p-4">
-          <p className="text-sm text-slate-400">低风险</p>
-          <p className="mt-2 text-3xl font-semibold text-emerald-200">{stats.low}</p>
+        <div className="surface-panel p-4 text-center">
+          <p className="text-sm text-slate-400 text-center">低风险</p>
+          <p className="mt-2 text-3xl font-semibold text-emerald-200 text-center">{stats.low}</p>
         </div>
       </div>
 
@@ -307,9 +307,9 @@ export default function RisksPage() {
                   className="h-4 w-4 rounded border-white/20 bg-slate-900"
                 />
               </th>
-              <th className="px-4 py-3">合同 / 条款</th>
-              <th className="px-4 py-3">风险等级</th>
-              <th className="px-4 py-3">摘要</th>
+              <th className="px-4 py-3 text-center">合同 / 条款</th>
+              <th className="px-4 py-3 text-center">风险等级</th>
+              <th className="px-4 py-3 text-center">摘要</th>
               <th className="px-4 py-3">建议</th>
               <th className="px-4 py-3">创建时间</th>
               <th className="px-4 py-3">操作</th>
@@ -335,13 +335,15 @@ export default function RisksPage() {
                       版本 {risk.contract_version_no ?? '-'} · 对手方：{risk.contract_counterparty ?? '—'}
                     </p>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`${LEVEL_CHIP_STYLES[risk.risk_level] ?? 'surface-chip'} px-3 py-1 text-xs`}>
-                      {LEVEL_LABELS[risk.risk_level] ?? risk.risk_level}
-                    </span>
-                    <span className="ml-2 text-xs text-slate-400">
-                      {STATUS_LABELS[risk.resolution_status] ?? '待处置'}
-                    </span>
+                  <td className="px-4 py-3 align-middle">
+                    <div className="flex flex-col items-center space-y-1">
+                      <span className={`${LEVEL_CHIP_STYLES[risk.risk_level] ?? 'surface-chip'} px-3 py-1 text-xs text-center min-w-[60px]`}>
+                        {LEVEL_LABELS[risk.risk_level] ?? risk.risk_level}
+                      </span>
+                      <span className="text-xs text-slate-400 text-center">
+                        {STATUS_LABELS[risk.resolution_status] ?? '待处置'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-slate-300">{risk.summary ?? '暂无摘要'}</td>
                   <td className="px-4 py-3 text-slate-300">{risk.recommendation ?? '暂无建议'}</td>
