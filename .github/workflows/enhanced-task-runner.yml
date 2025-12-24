@@ -32,8 +32,8 @@ on:
         type: string
 
 env:
-  FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/task-runner-v2
-  LEGACY_FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/task-runner
+  FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/functions/v1/task-runner-v2
+  LEGACY_FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/functions/v1/task-runner
   AUTH_TOKEN: ${{ secrets.TASK_RUNNER_TOKEN }}
 
 jobs:

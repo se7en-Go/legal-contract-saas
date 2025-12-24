@@ -1,0 +1,74 @@
+name: Manual Task Runner Execution
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_type:
+        description: 'Which task runner to use'
+        required: true
+        default: 'legacy'
+        type: choice
+        options:
+        - legacy
+        - v2
+      task_ids:
+        description: 'Specific task IDs to process (comma separated, optional)'
+        required: false
+        default: ''
+        type: string
+
+env:
+  LEGACY_FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/functions/v1/task-runner?action=process
+  V2_FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/functions/v1/task-runner-v2?action=process
+  AUTH_TOKEN: ${{ secrets.TASK_RUNNER_TOKEN }}
+
+jobs:
+  execute-task-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Task Runner
+        run: |
+          echo "🚀 Starting manual task runner execution..."
+          echo "Runner Type: ${{ github.event.inputs.runner_type }}"
+          echo "Task IDs: ${{ github.event.inputs.task_ids }}"
+
+          # 选择函数URL
+          if [ "${{ github.event.inputs.runner_type }}" = "legacy" ]; then
+            FUNCTION_URL="$LEGACY_FUNCTION_URL"
+            echo "Using legacy task-runner (supports Excel files)"
+          else
+            FUNCTION_URL="$V2_FUNCTION_URL"
+            echo "Using task-runner-v2 (enhanced features)"
+          fi
+
+          echo "Function URL: $FUNCTION_URL"
+
+          # 执行任务处理器
+          STATUS=$(curl -s -o response.json -w "%{http_code}" "$FUNCTION_URL" \
+            -H "Authorization: Bearer $AUTH_TOKEN" \
+            -H "apikey: $AUTH_TOKEN" \
+            -H "Content-Type: application/json" \
+            --max-time 300)
+
+          echo "Response Status: $STATUS"
+          echo "Response Body:"
+          cat response.json | jq '.' 2>/dev/null || cat response.json
+
+          # 检查执行结果
+          if [ "$STATUS" -ge 400 ]; then
+            echo "❌ Task runner execution failed"
+            echo "Status Code: $STATUS"
+            exit 1
+          else
+            echo "✅ Task runner execution completed"
+
+            # 解析响应
+            TASKS_PROCESSED=$(cat response.json | jq -r '.tasks_processed // .message // "unknown"')
+            echo "📊 Tasks processed: $TASKS_PROCESSED"
+
+            if [ "$TASKS_PROCESSED" != "no-tasks" ] && [ "$TASKS_PROCESSED" != "unknown" ]; then
+              echo "🎉 Successfully processed tasks!"
+            else
+              echo "ℹ️ No tasks were processed (queue may be empty)"
+            fi
+          fi

@@ -9,13 +9,14 @@ jobs:
   invoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Call task-runner
+      - name: Call task-runner-v2
         env:
-          FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/task-runner
+          FUNCTION_URL: https://crndpzhpvhcncoscoiba.functions.supabase.co/functions/v1/task-runner-v2?action=process
           AUTH_TOKEN: ${{ secrets.TASK_RUNNER_TOKEN }}
         run: |
           STATUS=$(curl -s -o response.json -w "%{http_code}" "$FUNCTION_URL" \
             -H "Authorization: Bearer $AUTH_TOKEN" \
+            -H "apikey: $AUTH_TOKEN" \
             -H "Content-Type: application/json")
           echo "Status: $STATUS"
           cat response.json
