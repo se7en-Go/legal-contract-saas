@@ -401,17 +401,18 @@ export default function RisksPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-300">{risk.recommendation ?? '暂无建议'}</td>
                   <td className="px-4 py-3 text-slate-400">{new Date(risk.created_at).toLocaleString('zh-CN', { hour12: false })}</td>
-                  <td className="px-4 py-3 text-xs text-cyan-300">
-                    <div className="flex items-center gap-2">
+                  <td className="px-3 py-3 text-xs w-[100px]">
+                    <div className="flex flex-col items-center gap-2">
                       <button
-                        className="hover:underline disabled:opacity-40"
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg border border-blue-500/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                        style={{ writingMode: 'horizontal-tb' }}
                         disabled={rerunId === risk.id}
                         onClick={() => void handleManualRerun(risk)}
                       >
                         {rerunId === risk.id ? '重跑中…' : '重新分析'}
                       </button>
                       {risk.analysis_position && (
-                        <span className={`text-xs px-2 py-1 rounded ${
+                        <span className={`text-xs px-2 py-0.5 rounded whitespace-nowrap ${
                           risk.analysis_position === 'party_a'
                             ? 'bg-emerald-500/20 text-emerald-300'
                             : risk.analysis_position === 'party_b'
