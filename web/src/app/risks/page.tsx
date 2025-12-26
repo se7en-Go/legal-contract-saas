@@ -14,10 +14,25 @@ type RiskFinding = {
   contract_version_no: number | null;
   clause_title: string | null;
   risk_level: string;
-  summary: string | null;
+  description: string | null;
   recommendation: string | null;
   resolution_status: string;
   created_at: string;
+
+  // ✅ 新增：立场感知增强字段
+  analysis_position?: 'party_a' | 'party_b' | 'neutral';
+  position_based_insight?: {
+    advantage_type: 'favorable' | 'unfavorable' | 'neutral';
+    business_impact: string;
+    negotiation_points: string[];
+  };
+  commercial_guidance?: string;
+  analysis_metadata?: {
+    analysis_stage: string;
+    model_used: string;
+    confidence_score: number;
+    timestamp: string;
+  };
 };
 
 type RiskStats = {
@@ -72,6 +87,7 @@ export default function RisksPage() {
   const [bulkLoading, setBulkLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [rerunId, setRerunId] = useState<string | null>(null);
+  const [userPosition, setUserPosition] = useState<'party_a' | 'party_b' | 'neutral'>('neutral');
   const [stats, setStats] = useState<RiskStats>({ total: 0, high: 0, medium: 0, low: 0 });
   const levelCounts: Record<RiskLevelFilter, number> = {
     all: stats.total,
@@ -184,13 +200,16 @@ export default function RisksPage() {
     }
   };
 
-  const handleManualRerun = async (risk: RiskFinding) => {
+  const handleManualRerun = async (risk: RiskFinding, position?: 'party_a' | 'party_b' | 'neutral') => {
     setRerunId(risk.id);
     try {
       const res = await fetch('/api/risk-findings/rerun', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contractVersionId: risk.contract_version_id }),
+        body: JSON.stringify({
+          contractVersionId: risk.contract_version_id,
+          user_position: position || userPosition
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || '触发重跑失败');
@@ -267,6 +286,15 @@ export default function RisksPage() {
             >
               导出表格
             </button>
+            <select
+              value={userPosition}
+              onChange={(e) => setUserPosition(e.target.value as 'party_a' | 'party_b' | 'neutral')}
+              className="rounded-2xl border border-purple-400/60 bg-slate-900/60 px-3 py-2 text-xs text-purple-200 focus:border-purple-300 focus:outline-none"
+            >
+              <option value="neutral">⚪ 中立分析</option>
+              <option value="party_a">🟢 甲方立场</option>
+              <option value="party_b">🔵 乙方立场</option>
+            </select>
             <span className="text-xs text-slate-400">已选 {selectedIds.length} 条</span>
           </div>
         </div>
@@ -345,17 +373,56 @@ export default function RisksPage() {
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-300">{risk.summary ?? '暂无摘要'}</td>
+                  <td className="px-4 py-3 text-slate-300">
+                    <div>{risk.description ?? '暂无描述'}</div>
+
+                    {/* ✅ 立场分析显示 */}
+                    {risk.position_based_insight?.advantage_type && (
+                      <div className="mt-2">
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          risk.position_based_insight.advantage_type === 'favorable'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : risk.position_based_insight.advantage_type === 'unfavorable'
+                            ? 'bg-rose-500/20 text-rose-300'
+                            : 'bg-slate-500/20 text-slate-300'
+                        }`}>
+                          {risk.position_based_insight.advantage_type === 'favorable' ? '✓ 有利' :
+                           risk.position_based_insight.advantage_type === 'unfavorable' ? '✗ 不利' : '○ 中立'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* ✅ 商业建议显示 */}
+                    {risk.commercial_guidance && (
+                      <div className="mt-2 text-xs text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded">
+                        💼 {risk.commercial_guidance}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-300">{risk.recommendation ?? '暂无建议'}</td>
                   <td className="px-4 py-3 text-slate-400">{new Date(risk.created_at).toLocaleString('zh-CN', { hour12: false })}</td>
                   <td className="px-4 py-3 text-xs text-cyan-300">
-                    <button
-                      className="hover:underline disabled:opacity-40"
-                      disabled={rerunId === risk.id}
-                      onClick={() => void handleManualRerun(risk)}
-                    >
-                      {rerunId === risk.id ? '重跑中…' : '手动重跑'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="hover:underline disabled:opacity-40"
+                        disabled={rerunId === risk.id}
+                        onClick={() => void handleManualRerun(risk)}
+                      >
+                        {rerunId === risk.id ? '重跑中…' : '重新分析'}
+                      </button>
+                      {risk.analysis_position && (
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          risk.analysis_position === 'party_a'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : risk.analysis_position === 'party_b'
+                            ? 'bg-blue-500/20 text-blue-300'
+                            : 'bg-slate-500/20 text-slate-300'
+                        }`}>
+                          {risk.analysis_position === 'party_a' ? '甲方' :
+                           risk.analysis_position === 'party_b' ? '乙方' : '中立'}
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
