@@ -1,136 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabase } from '@/lib/supabase-server';
+
+export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
   try {
-    const requestUrl = new URL(request.url);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-    console.log('🔍 Supabase debug endpoint called');
+    // 检查环境变量
+    const hasUrl = !!supabaseUrl;
+    const hasKey = !!supabaseAnonKey;
 
-    // 测试环境变量
-    const envVars = {
-      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABABASE_URL ? 'SET' : 'MISSING',
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'MISSING',
-      NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL || 'NOT_SET',
-      NODE_ENV: process.env.NODE_ENV,
-    };
+    // 检查是否有隐藏字符
+    const hasNewlineInUrl = supabaseUrl?.includes('\n') || supabaseUrl?.includes('\r');
+    const hasNewlineInKey = supabaseAnonKey?.includes('\n') || supabaseAnonKey?.includes('\r');
 
-    // 清理后的URL
-    const cleanSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/[\n\r]/g, '');
-    const cleanSupabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/[\n\r]/g, '');
-    const cleanSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/[\n\r]/g, '');
+    // 测试 Supabase 连接
+    let supabaseConnectionStatus = 'unknown';
+    let supabaseError = null;
 
-    console.log('🧹 Clean URLs:', {
-      supabaseUrl: cleanSupabaseUrl?.substring(0, 50) + '...',
-      siteUrl: cleanSiteUrl,
-      supabaseKey: cleanSupabaseKey ? cleanSupabaseKey.substring(0, 20) + '...' : null
-    });
+    if (hasUrl && hasKey && !hasNewlineInUrl && !hasNewlineInKey) {
+      try {
+        const testResponse = await fetch(`${supabaseUrl}/rest/v1/`, {
+          headers: {
+            'apikey': supabaseAnonKey!,
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+          },
+        });
 
-    if (!cleanSupabaseUrl || !cleanSupabaseKey) {
-      return NextResponse.json({
-        success: false,
-        error: 'Missing required environment variables',
-        envVars,
-        cleanUrls: {
-          supabaseUrl: cleanSupabaseUrl,
-          supabaseKey: cleanSupabaseKey,
-          siteUrl: cleanSiteUrl
+        supabaseConnectionStatus = testResponse.ok ? 'ok' : 'error';
+
+        if (!testResponse.ok) {
+          supabaseError = await testResponse.text();
         }
-      }, { status: 500 });
-    }
-
-    // 测试Supabase连接
-    const supabase = await createServerSupabase({ canWriteCookies: false });
-
-    console.log('🔄 Testing Supabase connection...');
-
-    // 测试基本连接
-    const { data: connectionTest, error: connectionError } = await supabase
-      .from('_health_check')
-      .select('count')
-      .limit(1);
-
-    console.log('📊 Connection test result:', { connectionTest, connectionError });
-
-    // 测试认证服务
-    console.log('🔐 Testing auth service...');
-    const { data: authTest, error: authError } = await supabase.auth.getSession();
-
-    console.log('👤 Auth test result:', {
-      hasSession: !!authTest.session,
-      userId: authTest.session?.user?.id,
-      authError: authError?.message
-    });
-
-    // 测试一个简单的用户查询
-    let userTest = null;
-    let userError = null;
-
-    if (authTest.session?.user?.id) {
-      const result = await supabase
-        .from('profiles')
-        .select('id, email, created_at')
-        .eq('id', authTest.session.user.id)
-        .single();
-
-      userTest = result.data;
-      userError = result.error;
-
-      console.log('👤 User profile test result:', { userTest, userError });
-    }
-
-    // 测试token交换（如果有测试code）
-    const testCode = requestUrl.searchParams.get('test_code');
-    let tokenTestResult = null;
-
-    if (testCode) {
-      console.log('🔄 Testing token exchange with code:', testCode);
-      const { data: tokenData, error: tokenError } = await supabase.auth.exchangeCodeForSession(testCode);
-
-      tokenTestResult = {
-        success: !tokenError,
-        error: tokenError?.message,
-        sessionCreated: !!tokenData?.session
-      };
-
-      console.log('🔄 Token exchange test result:', tokenTestResult);
+      } catch (error) {
+        supabaseConnectionStatus = 'failed';
+        supabaseError = (error as Error).message;
+      }
     }
 
     return NextResponse.json({
       success: true,
-      timestamp: new Date().toISOString(),
-      envVars,
-      cleanUrls: {
-        supabaseUrl: cleanSupabaseUrl,
-        supabaseKey: cleanSupabaseKey ? '***SECRET***' : null,
-        siteUrl: cleanSiteUrl
+      environment: {
+        supabaseUrl: {
+          present: hasUrl,
+          value: hasUrl ? (supabaseUrl || '').substring(0, 50) + '...' : null,
+          hasNewline: hasNewlineInUrl,
+          length: supabaseUrl?.length || 0,
+        },
+        supabaseAnonKey: {
+          present: hasKey,
+          hasNewline: hasNewlineInKey,
+          length: supabaseAnonKey?.length || 0,
+          startsWith: supabaseAnonKey?.substring(0, 20) + '...',
+        },
       },
-      tests: {
-        connection: {
-          success: !connectionError,
-          error: connectionError?.message
-        },
-        auth: {
-          hasSession: !!authTest.session,
-          userId: authTest.session?.user?.id,
-          email: authTest.session?.user?.email,
-          error: authError?.message
-        },
-        user: authTest.session?.user?.id ? {
-          success: !userError,
-          error: userError?.message
-        } : { skipped: true },
-        tokenExchange: tokenTestResult
-      }
+      connection: {
+        status: supabaseConnectionStatus,
+        error: supabaseError,
+      },
+      diagnosis: {
+        overall: hasUrl && hasKey && !hasNewlineInUrl && !hasNewlineInKey && supabaseConnectionStatus === 'ok',
+        issues: [
+          !hasUrl ? 'NEXT_PUBLIC_SUPABASE_URL is missing' : null,
+          !hasKey ? 'NEXT_PUBLIC_SUPABASE_ANON_KEY is missing' : null,
+          hasNewlineInUrl ? 'NEXT_PUBLIC_SUPABASE_URL contains newline characters' : null,
+          hasNewlineInKey ? 'NEXT_PUBLIC_SUPABASE_ANON_KEY contains newline characters' : null,
+          supabaseConnectionStatus !== 'ok' ? 'Supabase connection test failed: ' + supabaseError : null,
+        ].filter(Boolean),
+      },
     });
-
   } catch (error) {
-    console.error('❌ Debug endpoint error:', error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString(),
-      stack: error instanceof Error ? error.stack : undefined
+      error: (error as Error).message,
     }, { status: 500 });
   }
 }
